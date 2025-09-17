@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Dashboard } from "@/components/dashboard/Dashboard";
+import { DeviceManagement } from "@/components/devices/DeviceManagement";
+import { CampaignManagement } from "@/components/campaigns/CampaignManagement";
+import { AIMessages } from "@/components/messages/AIMessages";
+import { Analytics } from "@/components/analytics/Analytics";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -10,33 +14,13 @@ const Index = () => {
       case "dashboard":
         return <Dashboard />;
       case "devices":
-        return (
-          <div className="flex-1 p-6">
-            <h1 className="text-3xl font-bold mb-6">Device Management</h1>
-            <p className="text-muted-foreground">Device management interface coming soon...</p>
-          </div>
-        );
+        return <DeviceManagement />;
       case "campaigns":
-        return (
-          <div className="flex-1 p-6">
-            <h1 className="text-3xl font-bold mb-6">Campaign Management</h1>
-            <p className="text-muted-foreground">Campaign creation and management interface coming soon...</p>
-          </div>
-        );
+        return <CampaignManagement />;
       case "messages":
-        return (
-          <div className="flex-1 p-6">
-            <h1 className="text-3xl font-bold mb-6">AI Message Variations</h1>
-            <p className="text-muted-foreground">AI message generation interface coming soon...</p>
-          </div>
-        );
+        return <AIMessages />;
       case "analytics":
-        return (
-          <div className="flex-1 p-6">
-            <h1 className="text-3xl font-bold mb-6">Analytics & Reports</h1>
-            <p className="text-muted-foreground">Analytics dashboard coming soon...</p>
-          </div>
-        );
+        return <Analytics />;
       case "settings":
         return (
           <div className="flex-1 p-6">
