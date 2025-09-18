@@ -9,7 +9,9 @@ import {
   Settings,
   Zap,
   MessageSquare,
+  LogOut,
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 interface SidebarProps {
   activeSection: string;
@@ -50,6 +52,8 @@ const navigationItems = [
 ];
 
 export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
+  const { signOut } = useAuth();
+  
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-card">
       {/* Header */}
@@ -92,7 +96,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
       <Separator />
 
       {/* Settings */}
-      <div className="p-4">
+      <div className="p-4 space-y-2">
         <Button
           variant="ghost"
           className="w-full justify-start gap-3"
@@ -100,6 +104,14 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
         >
           <Settings className="h-4 w-4" />
           Settings
+        </Button>
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"
+          onClick={signOut}
+        >
+          <LogOut className="h-4 w-4" />
+          Sign Out
         </Button>
       </div>
     </div>

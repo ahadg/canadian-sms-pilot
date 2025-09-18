@@ -14,7 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      devices: {
+        Row: {
+          active_slots: number
+          created_at: string
+          daily_limit: number | null
+          daily_sent: number | null
+          id: string
+          ip_address: string
+          last_seen: string | null
+          location: string
+          name: string
+          status: string
+          temperature: number | null
+          total_slots: number
+          updated_at: string
+          uptime: string | null
+          user_id: string
+        }
+        Insert: {
+          active_slots?: number
+          created_at?: string
+          daily_limit?: number | null
+          daily_sent?: number | null
+          id?: string
+          ip_address: string
+          last_seen?: string | null
+          location: string
+          name: string
+          status?: string
+          temperature?: number | null
+          total_slots?: number
+          updated_at?: string
+          uptime?: string | null
+          user_id: string
+        }
+        Update: {
+          active_slots?: number
+          created_at?: string
+          daily_limit?: number | null
+          daily_sent?: number | null
+          id?: string
+          ip_address?: string
+          last_seen?: string | null
+          location?: string
+          name?: string
+          status?: string
+          temperature?: number | null
+          total_slots?: number
+          updated_at?: string
+          uptime?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

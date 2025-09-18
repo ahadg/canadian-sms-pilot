@@ -5,14 +5,27 @@ import { DeviceManagement } from "@/components/devices/DeviceManagement";
 import { CampaignManagement } from "@/components/campaigns/CampaignManagement";
 import { AIMessages } from "@/components/messages/AIMessages";
 import { Analytics } from "@/components/analytics/Analytics";
+import { Auth } from "@/pages/Auth";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 
-const Index = () => {
+function AppContent() {
   const [activeSection, setActiveSection] = useState("dashboard");
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-lg">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Auth />;
+  }
 
   const renderContent = () => {
     switch (activeSection) {
-      case "dashboard":
-        return <Dashboard />;
       case "devices":
         return <DeviceManagement />;
       case "campaigns":
@@ -34,11 +47,19 @@ const Index = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen bg-background">
       <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
-      {renderContent()}
+      <main className="flex-1 overflow-auto">
+        {renderContent()}
+      </main>
     </div>
   );
-};
+}
 
-export default Index;
+export default function Index() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}

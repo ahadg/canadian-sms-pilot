@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,19 +36,26 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
 interface Device {
   id: string;
   name: string;
-  ipAddress: string;
+  ip_address: string;
   status: "online" | "offline" | "warning";
-  totalSlots: number;
-  activeSlots: number;
+  total_slots: number;
+  active_slots: number;
   location: string;
-  lastSeen: string;
-  dailyUsage: { sent: number; limit: number };
+  last_seen: string;
+  daily_sent: number;
+  daily_limit: number;
   temperature: number;
   uptime: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface SIMCard {
@@ -62,47 +69,7 @@ interface SIMCard {
   lastActivity: string;
 }
 
-const mockDevices: Device[] = [
-  {
-    id: "ejoin-001",
-    name: "Ejoin Gateway 001",
-    ipAddress: "192.168.1.100",
-    status: "online",
-    totalSlots: 512,
-    activeSlots: 487,
-    location: "Toronto, ON",
-    lastSeen: "2 minutes ago",
-    dailyUsage: { sent: 12450, limit: 15000 },
-    temperature: 42,
-    uptime: "15 days, 4 hours",
-  },
-  {
-    id: "ejoin-002",
-    name: "Ejoin Gateway 002", 
-    ipAddress: "192.168.1.101",
-    status: "warning",
-    totalSlots: 512,
-    activeSlots: 356,
-    location: "Vancouver, BC",
-    lastSeen: "15 minutes ago",
-    dailyUsage: { sent: 8920, limit: 12000 },
-    temperature: 56,
-    uptime: "8 days, 12 hours",
-  },
-  {
-    id: "ejoin-003",
-    name: "Ejoin Gateway 003",
-    ipAddress: "192.168.1.102", 
-    status: "offline",
-    totalSlots: 512,
-    activeSlots: 0,
-    location: "Montreal, QC",
-    lastSeen: "2 hours ago",
-    dailyUsage: { sent: 0, limit: 10000 },
-    temperature: 0,
-    uptime: "0 days, 0 hours",
-  },
-];
+const mockDevices: Device[] = [];
 
 const mockSIMCards: SIMCard[] = [
   { slotId: 1, imei: "861234567890123", carrier: "Rogers", status: "active", signalStrength: 85, dailySent: 245, dailyLimit: 300, lastActivity: "2 min ago" },
@@ -113,7 +80,16 @@ const mockSIMCards: SIMCard[] = [
 ];
 
 export function DeviceManagement() {
-  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    ipAddress: "",
+    location: "",
+  });
+  const { user } = useAuth();
+  const { toast } = useToast();
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -154,6 +130,64 @@ export function DeviceManagement() {
     }
   };
 
+  const fetchDevices = async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("devices")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setDevices((data || []) as Device[]);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to fetch devices",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddDevice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    try {
+      const { error } = await supabase.from("devices").insert({
+        user_id: user.id,
+        name: formData.name,
+        ip_address: formData.ipAddress,
+        location: formData.location,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Device added successfully",
+      });
+
+      setFormData({ name: "", ipAddress: "", location: "" });
+      setDialogOpen(false);
+      fetchDevices();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to add device",
+        variant: "destructive",
+      });
+    }
+  };
+
+  useEffect(() => {
+    fetchDevices();
+  }, [user]);
+
   return (
     <div className="flex-1 space-y-6 p-6">
       {/* Header */}
@@ -165,11 +199,11 @@ export function DeviceManagement() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={fetchDevices}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh All
           </Button>
-          <Dialog>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="bg-gradient-primary shadow-primary">
                 <Plus className="h-4 w-4 mr-2" />
@@ -183,29 +217,50 @@ export function DeviceManagement() {
                   Connect a new Ejoin 512-SIM gateway to your platform
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4">
+              <form onSubmit={handleAddDevice} className="space-y-4">
                 <div>
                   <Label htmlFor="deviceName">Device Name</Label>
-                  <Input id="deviceName" placeholder="Ejoin Gateway 004" />
+                  <Input 
+                    id="deviceName" 
+                    placeholder="Ejoin Gateway 004"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    required
+                  />
                 </div>
                 <div>
                   <Label htmlFor="ipAddress">IP Address</Label>
-                  <Input id="ipAddress" placeholder="192.168.1.103" />
+                  <Input 
+                    id="ipAddress" 
+                    placeholder="192.168.1.103"
+                    value={formData.ipAddress}
+                    onChange={(e) => setFormData({ ...formData, ipAddress: e.target.value })}
+                    required
+                  />
                 </div>
                 <div>
                   <Label htmlFor="location">Location</Label>
-                  <Input id="location" placeholder="Calgary, AB" />
+                  <Input 
+                    id="location" 
+                    placeholder="Calgary, AB"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    required
+                  />
                 </div>
-                <Button className="w-full">Connect Device</Button>
-              </div>
+                <Button type="submit" className="w-full">Connect Device</Button>
+              </form>
             </DialogContent>
           </Dialog>
         </div>
       </div>
 
       {/* Device Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {mockDevices.map((device) => (
+      {loading ? (
+        <div className="text-center py-8">Loading devices...</div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {devices.map((device) => (
           <Card key={device.id} className="cursor-pointer hover:shadow-lg transition-shadow">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -220,7 +275,7 @@ export function DeviceManagement() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">IP Address:</span>
-                  <div className="font-medium">{device.ipAddress}</div>
+                  <div className="font-medium">{device.ip_address}</div>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Location:</span>
@@ -239,17 +294,17 @@ export function DeviceManagement() {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>Active SIMs</span>
-                  <span>{device.activeSlots}/{device.totalSlots}</span>
+                  <span>{device.active_slots}/{device.total_slots}</span>
                 </div>
-                <Progress value={(device.activeSlots / device.totalSlots) * 100} />
+                <Progress value={(device.active_slots / device.total_slots) * 100} />
               </div>
 
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>Daily Usage</span>
-                  <span>{device.dailyUsage.sent.toLocaleString()}/{device.dailyUsage.limit.toLocaleString()}</span>
+                  <span>{device.daily_sent.toLocaleString()}/{device.daily_limit.toLocaleString()}</span>
                 </div>
-                <Progress value={(device.dailyUsage.sent / device.dailyUsage.limit) * 100} />
+                <Progress value={(device.daily_sent / device.daily_limit) * 100} />
               </div>
 
               <div className="flex gap-2">
@@ -264,8 +319,9 @@ export function DeviceManagement() {
               </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Detailed SIM Management */}
       <Card>
@@ -276,16 +332,16 @@ export function DeviceManagement() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="ejoin-001">
+          <Tabs defaultValue={devices[0]?.id || ""}>
             <TabsList className="grid w-full grid-cols-3">
-              {mockDevices.map((device) => (
+              {devices.slice(0, 3).map((device) => (
                 <TabsTrigger key={device.id} value={device.id}>
                   {device.name}
                 </TabsTrigger>
               ))}
             </TabsList>
             
-            {mockDevices.map((device) => (
+            {devices.map((device) => (
               <TabsContent key={device.id} value={device.id}>
                 <div className="rounded-md border">
                   <Table>
