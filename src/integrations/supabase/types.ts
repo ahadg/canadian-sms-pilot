@@ -14,6 +14,134 @@ export type Database = {
   }
   public: {
     Tables: {
+      campaigns: {
+        Row: {
+          contact_list_id: string | null
+          created_at: string
+          delivered_messages: number
+          failed_messages: number
+          id: string
+          message_content: string
+          message_preview: string | null
+          name: string
+          priority: string | null
+          scheduled_date: string | null
+          sent_messages: number
+          status: string
+          total_contacts: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          contact_list_id?: string | null
+          created_at?: string
+          delivered_messages?: number
+          failed_messages?: number
+          id?: string
+          message_content: string
+          message_preview?: string | null
+          name: string
+          priority?: string | null
+          scheduled_date?: string | null
+          sent_messages?: number
+          status?: string
+          total_contacts?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          contact_list_id?: string | null
+          created_at?: string
+          delivered_messages?: number
+          failed_messages?: number
+          id?: string
+          message_content?: string
+          message_preview?: string | null
+          name?: string
+          priority?: string | null
+          scheduled_date?: string | null
+          sent_messages?: number
+          status?: string
+          total_contacts?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      contact_lists: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          opted_in: number
+          total_contacts: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          opted_in?: number
+          total_contacts?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          opted_in?: number
+          total_contacts?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      contacts: {
+        Row: {
+          contact_list_id: string
+          created_at: string
+          first_name: string | null
+          id: string
+          last_name: string | null
+          opted_in: boolean
+          phone_number: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          contact_list_id: string
+          created_at?: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          opted_in?: boolean
+          phone_number: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          contact_list_id?: string
+          created_at?: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          opted_in?: boolean
+          phone_number?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contacts_contact_list_id_fkey"
+            columns: ["contact_list_id"]
+            isOneToOne: false
+            referencedRelation: "contact_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       devices: {
         Row: {
           active_slots: number
@@ -25,12 +153,15 @@ export type Database = {
           last_seen: string | null
           location: string
           name: string
+          password: string | null
+          port: string | null
           status: string
           temperature: number | null
           total_slots: number
           updated_at: string
           uptime: string | null
           user_id: string
+          username: string | null
         }
         Insert: {
           active_slots?: number
@@ -42,12 +173,15 @@ export type Database = {
           last_seen?: string | null
           location: string
           name: string
+          password?: string | null
+          port?: string | null
           status?: string
           temperature?: number | null
           total_slots?: number
           updated_at?: string
           uptime?: string | null
           user_id: string
+          username?: string | null
         }
         Update: {
           active_slots?: number
@@ -59,11 +193,44 @@ export type Database = {
           last_seen?: string | null
           location?: string
           name?: string
+          password?: string | null
+          port?: string | null
           status?: string
           temperature?: number | null
           total_slots?: number
           updated_at?: string
           uptime?: string | null
+          user_id?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
+      message_templates: {
+        Row: {
+          category: string | null
+          content: string
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []

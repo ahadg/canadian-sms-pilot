@@ -44,103 +44,44 @@ import {
   Eye,
   Edit,
   Trash2,
+  Loader2,
 } from "lucide-react";
-
-interface Campaign {
-  id: string;
-  name: string;
-  status: "active" | "paused" | "completed" | "scheduled";
-  totalContacts: number;
-  sentMessages: number;
-  deliveredMessages: number;
-  failedMessages: number;
-  scheduledDate?: string;
-  createdDate: string;
-  messagePreview: string;
-}
-
-interface ContactList {
-  id: string;
-  name: string;
-  totalContacts: number;
-  optedIn: number;
-  lastUpdated: string;
-}
-
-const mockCampaigns: Campaign[] = [
-  {
-    id: "camp-001",
-    name: "Black Friday Promo",
-    status: "active",
-    totalContacts: 15000,
-    sentMessages: 7245,
-    deliveredMessages: 7156,
-    failedMessages: 89,
-    createdDate: "2024-11-15",
-    messagePreview: "🔥 BLACK FRIDAY: 50% OFF everything! Limited time offer...",
-  },
-  {
-    id: "camp-002", 
-    name: "Product Update",
-    status: "paused",
-    totalContacts: 8500,
-    sentMessages: 2156,
-    deliveredMessages: 2089,
-    failedMessages: 67,
-    createdDate: "2024-11-14",
-    messagePreview: "Exciting news! Our latest product update includes...",
-  },
-  {
-    id: "camp-003",
-    name: "Welcome Series",
-    status: "active", 
-    totalContacts: 3200,
-    sentMessages: 892,
-    deliveredMessages: 876,
-    failedMessages: 16,
-    createdDate: "2024-11-13",
-    messagePreview: "Welcome to our platform! Here's what you need to know...",
-  },
-  {
-    id: "camp-004",
-    name: "Holiday Greetings",
-    status: "scheduled",
-    totalContacts: 25000,
-    sentMessages: 0,
-    deliveredMessages: 0,
-    failedMessages: 0,
-    scheduledDate: "2024-12-24",
-    createdDate: "2024-11-12",
-    messagePreview: "🎄 Season's Greetings from our team! Wishing you...",
-  },
-];
-
-const mockContactLists: ContactList[] = [
-  {
-    id: "list-001",
-    name: "Premium Customers",
-    totalContacts: 15420,
-    optedIn: 14891,
-    lastUpdated: "2024-11-15",
-  },
-  {
-    id: "list-002",
-    name: "Newsletter Subscribers", 
-    totalContacts: 32150,
-    optedIn: 31205,
-    lastUpdated: "2024-11-14",
-  },
-  {
-    id: "list-003",
-    name: "New Signups",
-    totalContacts: 5670,
-    optedIn: 5234,
-    lastUpdated: "2024-11-15",
-  },
-];
+import { useCampaigns, type Campaign, type ContactList, type MessageTemplate } from "@/hooks/useCampaigns";
+import { toast } from "sonner";
 
 export function CampaignManagement() {
+  const {
+    campaigns,
+    contactLists,
+    messageTemplates,
+    loading,
+    createCampaign,
+    updateCampaignStatus,
+    createContactList,
+    createMessageTemplate,
+    deleteMessageTemplate
+  } = useCampaigns();
+
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [isCreateCampaignOpen, setIsCreateCampaignOpen] = useState(false);
+  const [isCreateContactListOpen, setIsCreateContactListOpen] = useState(false);
+  const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false);
+  
+  // Form states
+  const [campaignForm, setCampaignForm] = useState({
+    name: '',
+    message_content: '',
+    contact_list_id: '',
+    priority: 'normal' as 'low' | 'normal' | 'high',
+    status: 'scheduled' as Campaign['status']
+  });
+  
+  const [contactListName, setContactListName] = useState('');
+  const [templateForm, setTemplateForm] = useState({
+    name: '',
+    content: '',
+    category: 'general'
+  });
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -158,9 +99,83 @@ export function CampaignManagement() {
   };
 
   const getDeliveryRate = (campaign: Campaign) => {
-    if (campaign.sentMessages === 0) return 0;
-    return (campaign.deliveredMessages / campaign.sentMessages) * 100;
+    if (campaign.sent_messages === 0) return 0;
+    return (campaign.delivered_messages / campaign.sent_messages) * 100;
   };
+
+  const handleCreateCampaign = async () => {
+    if (!campaignForm.name || !campaignForm.message_content) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      await createCampaign({
+        name: campaignForm.name,
+        message_content: campaignForm.message_content,
+        contact_list_id: campaignForm.contact_list_id || undefined,
+        priority: campaignForm.priority,
+        status: campaignForm.status,
+        total_contacts: 0,
+        sent_messages: 0,
+        delivered_messages: 0,
+        failed_messages: 0
+      });
+      
+      setIsCreateCampaignOpen(false);
+      setCampaignForm({
+        name: '',
+        message_content: '',
+        contact_list_id: '',
+        priority: 'normal',
+        status: 'scheduled'
+      });
+    } catch (error) {
+      // Error is handled in the hook
+    }
+  };
+
+  const handleCreateContactList = async () => {
+    if (!contactListName.trim()) {
+      toast.error('Please enter a contact list name');
+      return;
+    }
+
+    try {
+      await createContactList(contactListName);
+      setIsCreateContactListOpen(false);
+      setContactListName('');
+    } catch (error) {
+      // Error is handled in the hook
+    }
+  };
+
+  const handleCreateTemplate = async () => {
+    if (!templateForm.name || !templateForm.content) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      await createMessageTemplate(templateForm);
+      setIsCreateTemplateOpen(false);
+      setTemplateForm({
+        name: '',
+        content: '',
+        category: 'general'
+      });
+    } catch (error) {
+      // Error is handled in the hook
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 space-y-6 p-6">
@@ -177,7 +192,7 @@ export function CampaignManagement() {
             <Upload className="h-4 w-4 mr-2" />
             Import Contacts
           </Button>
-          <Dialog>
+          <Dialog open={isCreateCampaignOpen} onOpenChange={setIsCreateCampaignOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="bg-gradient-primary shadow-primary">
                 <Plus className="h-4 w-4 mr-2" />
@@ -195,18 +210,26 @@ export function CampaignManagement() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="campaignName">Campaign Name</Label>
-                    <Input id="campaignName" placeholder="Winter Sale 2024" />
+                    <Input 
+                      id="campaignName" 
+                      placeholder="Winter Sale 2024"
+                      value={campaignForm.name}
+                      onChange={(e) => setCampaignForm(prev => ({ ...prev, name: e.target.value }))}
+                    />
                   </div>
                   <div>
                     <Label htmlFor="contactList">Contact List</Label>
-                    <Select>
+                    <Select 
+                      value={campaignForm.contact_list_id}
+                      onValueChange={(value) => setCampaignForm(prev => ({ ...prev, contact_list_id: value }))}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select contact list" />
                       </SelectTrigger>
                       <SelectContent>
-                        {mockContactLists.map((list) => (
+                        {contactLists.map((list) => (
                           <SelectItem key={list.id} value={list.id}>
-                            {list.name} ({list.optedIn.toLocaleString()} contacts)
+                            {list.name} ({list.opted_in.toLocaleString()} contacts)
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -220,28 +243,36 @@ export function CampaignManagement() {
                     id="message" 
                     placeholder="Enter your SMS message here..."
                     className="min-h-[100px]"
+                    value={campaignForm.message_content}
+                    onChange={(e) => setCampaignForm(prev => ({ ...prev, message_content: e.target.value }))}
                   />
                   <div className="text-xs text-muted-foreground mt-1">
-                    160 characters = 1 SMS segment
+                    {campaignForm.message_content.length} characters • {Math.ceil(campaignForm.message_content.length / 160)} SMS segment(s)
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="scheduleType">Schedule</Label>
-                    <Select>
+                    <Select 
+                      value={campaignForm.status}
+                      onValueChange={(value) => setCampaignForm(prev => ({ ...prev, status: value as Campaign['status'] }))}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Send immediately" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="immediate">Send Immediately</SelectItem>
+                        <SelectItem value="active">Send Immediately</SelectItem>
                         <SelectItem value="scheduled">Schedule for Later</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
                     <Label htmlFor="priority">Priority</Label>
-                    <Select>
+                    <Select 
+                      value={campaignForm.priority}
+                      onValueChange={(value) => setCampaignForm(prev => ({ ...prev, priority: value as 'low' | 'normal' | 'high' }))}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Normal" />
                       </SelectTrigger>
@@ -259,7 +290,7 @@ export function CampaignManagement() {
                     <Eye className="h-4 w-4 mr-2" />
                     Preview
                   </Button>
-                  <Button className="flex-1">
+                  <Button className="flex-1" onClick={handleCreateCampaign}>
                     <Send className="h-4 w-4 mr-2" />
                     Create Campaign
                   </Button>
@@ -285,7 +316,7 @@ export function CampaignManagement() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Total Campaigns</p>
-                    <p className="text-2xl font-bold">{mockCampaigns.length}</p>
+                    <p className="text-2xl font-bold">{campaigns.length}</p>
                   </div>
                   <Send className="h-8 w-8 text-primary" />
                 </div>
@@ -298,7 +329,7 @@ export function CampaignManagement() {
                   <div>
                     <p className="text-sm text-muted-foreground">Active Now</p>
                     <p className="text-2xl font-bold">
-                      {mockCampaigns.filter(c => c.status === "active").length}
+                      {campaigns.filter(c => c.status === "active").length}
                     </p>
                   </div>
                   <Play className="h-8 w-8 text-success" />
@@ -312,7 +343,7 @@ export function CampaignManagement() {
                   <div>
                     <p className="text-sm text-muted-foreground">Messages Sent</p>
                     <p className="text-2xl font-bold">
-                      {mockCampaigns.reduce((sum, c) => sum + c.sentMessages, 0).toLocaleString()}
+                      {campaigns.reduce((sum, c) => sum + c.sent_messages, 0).toLocaleString()}
                     </p>
                   </div>
                   <BarChart3 className="h-8 w-8 text-info" />
@@ -325,7 +356,11 @@ export function CampaignManagement() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Avg. Delivery Rate</p>
-                    <p className="text-2xl font-bold">98.2%</p>
+                    <p className="text-2xl font-bold">
+                      {campaigns.length > 0 
+                        ? (campaigns.reduce((sum, c) => sum + getDeliveryRate(c), 0) / campaigns.length).toFixed(1)
+                        : 0}%
+                    </p>
                   </div>
                   <Users className="h-8 w-8 text-warning" />
                 </div>
@@ -352,13 +387,13 @@ export function CampaignManagement() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {mockCampaigns.map((campaign) => (
+                    {campaigns.map((campaign) => (
                       <TableRow key={campaign.id}>
                         <TableCell>
                           <div>
                             <div className="font-medium">{campaign.name}</div>
                             <div className="text-xs text-muted-foreground truncate max-w-xs">
-                              {campaign.messagePreview}
+                              {campaign.message_preview || campaign.message_content.substring(0, 50) + '...'}
                             </div>
                           </div>
                         </TableCell>
@@ -366,10 +401,10 @@ export function CampaignManagement() {
                         <TableCell>
                           <div className="space-y-1">
                             <div className="text-sm">
-                              {campaign.sentMessages.toLocaleString()}/{campaign.totalContacts.toLocaleString()}
+                              {campaign.sent_messages.toLocaleString()}/{campaign.total_contacts.toLocaleString()}
                             </div>
                             <Progress 
-                              value={(campaign.sentMessages / campaign.totalContacts) * 100} 
+                              value={campaign.total_contacts > 0 ? (campaign.sent_messages / campaign.total_contacts) * 100 : 0} 
                               className="h-2 w-24"
                             />
                           </div>
@@ -380,16 +415,24 @@ export function CampaignManagement() {
                           </div>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {campaign.createdDate}
+                          {new Date(campaign.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
                             {campaign.status === "active" ? (
-                              <Button variant="ghost" size="sm">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => updateCampaignStatus(campaign.id, 'paused')}
+                              >
                                 <Pause className="h-3 w-3" />
                               </Button>
                             ) : campaign.status === "paused" ? (
-                              <Button variant="ghost" size="sm">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => updateCampaignStatus(campaign.id, 'active')}
+                              >
                                 <Play className="h-3 w-3" />
                               </Button>
                             ) : null}
@@ -421,23 +464,23 @@ export function CampaignManagement() {
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {mockContactLists.map((list) => (
+                {contactLists.map((list) => (
                   <Card key={list.id}>
                     <CardContent className="p-4">
                       <div className="space-y-3">
                         <div>
                           <h3 className="font-medium">{list.name}</h3>
                           <p className="text-sm text-muted-foreground">
-                            Last updated: {list.lastUpdated}
+                            Last updated: {new Date(list.updated_at).toLocaleDateString()}
                           </p>
                         </div>
                         
                         <div className="space-y-2">
                           <div className="flex justify-between text-sm">
                             <span>Opted In</span>
-                            <span>{list.optedIn.toLocaleString()}/{list.totalContacts.toLocaleString()}</span>
+                            <span>{list.opted_in.toLocaleString()}/{list.total_contacts.toLocaleString()}</span>
                           </div>
-                          <Progress value={(list.optedIn / list.totalContacts) * 100} />
+                          <Progress value={list.total_contacts > 0 ? (list.opted_in / list.total_contacts) * 100 : 0} />
                         </div>
 
                         <div className="flex gap-2">
@@ -456,17 +499,48 @@ export function CampaignManagement() {
                 ))}
                 
                 {/* Add New List Card */}
-                <Card className="border-dashed">
-                  <CardContent className="p-4 flex items-center justify-center min-h-[200px]">
-                    <div className="text-center">
-                      <Plus className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground mb-3">Create new contact list</p>
-                      <Button variant="outline" size="sm">
-                        Add List
-                      </Button>
+                <Dialog open={isCreateContactListOpen} onOpenChange={setIsCreateContactListOpen}>
+                  <DialogTrigger asChild>
+                    <Card className="border-dashed cursor-pointer hover:border-primary/50 transition-colors">
+                      <CardContent className="p-4 flex items-center justify-center min-h-[200px]">
+                        <div className="text-center">
+                          <Plus className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                          <p className="text-sm text-muted-foreground mb-3">Create new contact list</p>
+                          <Button variant="outline" size="sm">
+                            Add List
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Create Contact List</DialogTitle>
+                      <DialogDescription>
+                        Create a new contact list to organize your contacts
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="listName">List Name</Label>
+                        <Input 
+                          id="listName" 
+                          placeholder="Enter list name"
+                          value={contactListName}
+                          onChange={(e) => setContactListName(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" className="flex-1" onClick={() => setIsCreateContactListOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button className="flex-1" onClick={handleCreateContactList}>
+                          Create List
+                        </Button>
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
+                  </DialogContent>
+                </Dialog>
               </div>
             </CardContent>
           </Card>
@@ -483,64 +557,107 @@ export function CampaignManagement() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="p-4 border rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium">Promotional Template</h3>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm">
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                {messageTemplates.map((template) => (
+                  <div key={template.id} className="p-4 border rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <h3 className="font-medium">{template.name}</h3>
+                        <Badge variant="outline" className="text-xs mt-1">
+                          {template.category}
+                        </Badge>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="sm">
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => deleteMessageTemplate(template.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      {template.content}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {template.content.length} characters
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        Created: {new Date(template.created_at).toLocaleDateString()}
+                      </span>
                     </div>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    🔥 [OFFER_NAME]: [DISCOUNT]% OFF everything! Limited time offer. Use code: [CODE]. Shop now: [LINK] Reply STOP to opt out.
-                  </p>
-                  <Badge variant="outline" className="text-xs">160 characters</Badge>
-                </div>
+                ))}
 
-                <div className="p-4 border rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium">Welcome Message</h3>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm">
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                <Dialog open={isCreateTemplateOpen} onOpenChange={setIsCreateTemplateOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create New Template
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Create Message Template</DialogTitle>
+                      <DialogDescription>
+                        Create a reusable message template for your campaigns
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="templateName">Template Name</Label>
+                        <Input 
+                          id="templateName" 
+                          placeholder="Welcome Message"
+                          value={templateForm.name}
+                          onChange={(e) => setTemplateForm(prev => ({ ...prev, name: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="templateCategory">Category</Label>
+                        <Select 
+                          value={templateForm.category}
+                          onValueChange={(value) => setTemplateForm(prev => ({ ...prev, category: value }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="general">General</SelectItem>
+                            <SelectItem value="promotional">Promotional</SelectItem>
+                            <SelectItem value="transactional">Transactional</SelectItem>
+                            <SelectItem value="notifications">Notifications</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="templateContent">Message Content</Label>
+                        <Textarea 
+                          id="templateContent" 
+                          placeholder="Enter your message template..."
+                          className="min-h-[100px]"
+                          value={templateForm.content}
+                          onChange={(e) => setTemplateForm(prev => ({ ...prev, content: e.target.value }))}
+                        />
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {templateForm.content.length} characters
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" className="flex-1" onClick={() => setIsCreateTemplateOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button className="flex-1" onClick={handleCreateTemplate}>
+                          Create Template
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Welcome to [COMPANY_NAME], [FIRST_NAME]! Thanks for joining us. Here's your welcome bonus: [BONUS]. Questions? Reply to this message.
-                  </p>
-                  <Badge variant="outline" className="text-xs">142 characters</Badge>
-                </div>
-
-                <div className="p-4 border rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium">Appointment Reminder</h3>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm">
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Reminder: Your appointment with [PROVIDER] is tomorrow at [TIME]. Location: [ADDRESS]. Reply C to confirm or R to reschedule.
-                  </p>
-                  <Badge variant="outline" className="text-xs">138 characters</Badge>
-                </div>
-
-                <Button variant="outline" className="w-full">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create New Template
-                </Button>
+                  </DialogContent>
+                </Dialog>
               </div>
             </CardContent>
           </Card>
