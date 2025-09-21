@@ -64,7 +64,10 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
     }
 
     try {
-      await addContacts(contactListId, [newContact]);
+      await addContacts(contactListId, [{
+        ...newContact,
+        contact_list_id: contactListId
+      }]);
       setNewContact({
         phone_number: '',
         first_name: '',
