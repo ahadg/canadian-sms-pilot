@@ -35,7 +35,20 @@ import {
   Zap,
   Save,
   Download,
+  Sliders,
+  Filter,
+  Clock,
+  Calendar,
+  BarChart3,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  Hash,
+  RotateCcw,
+  Shuffle,
+  PieChart,
 } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
 
 interface MessageVariation {
   id: string;
@@ -46,6 +59,9 @@ interface MessageVariation {
   characterCount: number;
   rating: number;
   isSelected: boolean;
+  spamScore?: number;
+  encoding?: "GSM-7" | "Unicode";
+  cost?: number;
 }
 
 interface MessageTemplate {
@@ -55,6 +71,23 @@ interface MessageTemplate {
   originalMessage: string;
   variations: MessageVariation[];
   lastGenerated: string;
+}
+
+interface GenerationSettings {
+  maxCharLimit: number;
+  emojiLevel: "none" | "light" | "moderate";
+  creativity: number;
+  rephrasingMode: "synonym" | "paraphrase" | "rewrite";
+  customPrompt: string;
+  rotationStrategy: "random" | "roundRobin" | "weighted";
+  simQuota: number;
+  cooldownInterval: number;
+  timeWindow: {
+    start: string;
+    end: string;
+  };
+  bannedWords: string[];
+  personalizationTags: string[];
 }
 
 const mockMessageTemplates: MessageTemplate[] = [
@@ -73,6 +106,9 @@ const mockMessageTemplates: MessageTemplate[] = [
         characterCount: 143,
         rating: 4.8,
         isSelected: true,
+        spamScore: 2.1,
+        encoding: "GSM-7",
+        cost: 1
       },
       {
         id: "var-002", 
@@ -83,6 +119,9 @@ const mockMessageTemplates: MessageTemplate[] = [
         characterCount: 152,
         rating: 4.2,
         isSelected: false,
+        spamScore: 1.2,
+        encoding: "GSM-7",
+        cost: 1
       },
       {
         id: "var-003",
@@ -93,6 +132,9 @@ const mockMessageTemplates: MessageTemplate[] = [
         characterCount: 147,
         rating: 4.5,
         isSelected: false,
+        spamScore: 3.5,
+        encoding: "Unicode",
+        cost: 2
       },
     ],
     lastGenerated: "2024-11-15 14:30",
@@ -112,6 +154,9 @@ const mockMessageTemplates: MessageTemplate[] = [
         characterCount: 134,
         rating: 4.7,
         isSelected: true,
+        spamScore: 0.8,
+        encoding: "GSM-7",
+        cost: 1
       },
       {
         id: "var-005",
@@ -122,22 +167,61 @@ const mockMessageTemplates: MessageTemplate[] = [
         characterCount: 168,
         rating: 4.3,
         isSelected: false,
+        spamScore: 1.5,
+        encoding: "Unicode",
+        cost: 2
       },
     ],
     lastGenerated: "2024-11-14 09:15",
   },
 ];
 
+const personalizationOptions = [
+  "{name}",
+  "{company}",
+  "{date}",
+  "{time}",
+  "{location}",
+  "{product}",
+  "{order_id}",
+  "{phone}",
+  "{email}",
+  "{username}"
+];
+
 export function AIMessages() {
   const [selectedTemplate, setSelectedTemplate] = useState<MessageTemplate | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [originalMessage, setOriginalMessage] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [bannedWords, setBannedWords] = useState("free, win, lottery, prize, cash");
+  const [generationSettings, setGenerationSettings] = useState<GenerationSettings>({
+    maxCharLimit: 160,
+    emojiLevel: "light",
+    creativity: 0.7,
+    rephrasingMode: "paraphrase",
+    customPrompt: "",
+    rotationStrategy: "random",
+    simQuota: 150,
+    cooldownInterval: 30,
+    timeWindow: {
+      start: "09:00",
+      end: "20:00"
+    },
+    bannedWords: ["free", "win", "lottery", "prize", "cash"],
+    personalizationTags: []
+  });
 
   const handleGenerateVariations = async () => {
     setIsGenerating(true);
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 2000));
     setIsGenerating(false);
+  };
+
+  const handleExportVariations = (format: "csv" | "txt") => {
+    // In a real app, this would generate and download a file
+    console.log(`Exporting variations as ${format}`);
   };
 
   const getToneColor = (tone: string) => {
@@ -161,6 +245,41 @@ export function AIMessages() {
     return "text-destructive";
   };
 
+  const getSpamScoreColor = (score: number) => {
+    if (score < 2) return "text-success";
+    if (score < 4) return "text-warning";
+    return "text-destructive";
+  };
+
+  const addPersonalizationTag = (tag: string) => {
+    if (!selectedTags.includes(tag)) {
+      setSelectedTags([...selectedTags, tag]);
+    }
+  };
+
+  const removePersonalizationTag = (tag: string) => {
+    setSelectedTags(selectedTags.filter(t => t !== tag));
+  };
+
+  const updateBannedWords = (words: string) => {
+    setBannedWords(words);
+    setGenerationSettings({
+      ...generationSettings,
+      bannedWords: words.split(',').map(word => word.trim()).filter(word => word)
+    });
+  };
+
+  const calculateEstimatedCost = () => {
+    // Simple calculation: GSM-7 = 1 credit, Unicode = 2 credits
+    let totalCost = 0;
+    mockMessageTemplates.forEach(template => {
+      template.variations.forEach(variation => {
+        totalCost += variation.cost || 1;
+      });
+    });
+    return totalCost;
+  };
+
   return (
     <div className="flex-1 space-y-6 p-6">
       {/* Header */}
@@ -172,10 +291,225 @@ export function AIMessages() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Settings className="h-4 w-4 mr-2" />
-            AI Settings
-          </Button>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Sliders className="h-4 w-4 mr-2" />
+                AI Settings
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>AI Generation Settings</DialogTitle>
+                <DialogDescription>
+                  Configure how the AI generates message variations
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-6 py-4">
+                <div className="space-y-4">
+                  <h3 className="font-medium">Message Content Control</h3>
+                  
+                  <div>
+                    <Label htmlFor="maxCharLimit">Max Character Limit</Label>
+                    <div className="flex items-center gap-3 mt-1">
+                      <Slider
+                        id="maxCharLimit"
+                        min={80}
+                        max={500}
+                        step={10}
+                        value={[generationSettings.maxCharLimit]}
+                        onValueChange={(value) => setGenerationSettings({...generationSettings, maxCharLimit: value[0]})}
+                        className="flex-1"
+                      />
+                      <span className="text-sm w-12">{generationSettings.maxCharLimit}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Recommended: 160 for single SMS, 320 for multi-SMS
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="emojiLevel">Emoji Usage</Label>
+                    <Select 
+                      value={generationSettings.emojiLevel}
+                      onValueChange={(value: "none" | "light" | "moderate") => 
+                        setGenerationSettings({...generationSettings, emojiLevel: value})
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select emoji level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="light">Light</SelectItem>
+                        <SelectItem value="moderate">Moderate</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label>Personalization Tags</Label>
+                    <div className="flex flex-wrap gap-2 mt-2 mb-3">
+                      {selectedTags.map(tag => (
+                        <Badge key={tag} className="flex items-center gap-1">
+                          {tag}
+                          <XCircle 
+                            className="h-3 w-3 cursor-pointer" 
+                            onClick={() => removePersonalizationTag(tag)}
+                          />
+                        </Badge>
+                      ))}
+                    </div>
+                    <Select onValueChange={addPersonalizationTag}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Add personalization tag" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {personalizationOptions.map(tag => (
+                          <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="bannedWords">Banned Words (comma separated)</Label>
+                    <Input 
+                      id="bannedWords"
+                      value={bannedWords}
+                      onChange={(e) => updateBannedWords(e.target.value)}
+                      placeholder="free, win, lottery, prize..."
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="font-medium">Variation Generation Settings</h3>
+                  
+                  <div>
+                    <Label htmlFor="creativity">Creativity Level</Label>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-xs text-muted-foreground">Strict</span>
+                      <Slider
+                        id="creativity"
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        value={[generationSettings.creativity]}
+                        onValueChange={(value) => setGenerationSettings({...generationSettings, creativity: value[0]})}
+                        className="flex-1"
+                      />
+                      <span className="text-xs text-muted-foreground">Creative</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Current: {generationSettings.creativity.toFixed(1)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="rephrasingMode">Rephrasing Mode</Label>
+                    <Select 
+                      value={generationSettings.rephrasingMode}
+                      onValueChange={(value: "synonym" | "paraphrase" | "rewrite") => 
+                        setGenerationSettings({...generationSettings, rephrasingMode: value})
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select rephrasing mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="synonym">Synonym Swap (Light)</SelectItem>
+                        <SelectItem value="paraphrase">Paraphrase (Medium)</SelectItem>
+                        <SelectItem value="rewrite">Rewrite (Heavy)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="customPrompt">Custom Prompt</Label>
+                    <Textarea 
+                      id="customPrompt"
+                      value={generationSettings.customPrompt}
+                      onChange={(e) => setGenerationSettings({...generationSettings, customPrompt: e.target.value})}
+                      placeholder="Add additional instructions for the AI..."
+                      className="mt-1 min-h-[80px]"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="font-medium">Delivery & Compliance</h3>
+                  
+                  <div>
+                    <Label htmlFor="rotationStrategy">Rotation Strategy</Label>
+                    <Select 
+                      value={generationSettings.rotationStrategy}
+                      onValueChange={(value: "random" | "roundRobin" | "weighted") => 
+                        setGenerationSettings({...generationSettings, rotationStrategy: value})
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select rotation strategy" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="random">Random</SelectItem>
+                        <SelectItem value="roundRobin">Round Robin</SelectItem>
+                        <SelectItem value="weighted">Weighted</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="simQuota">Max SMS per SIM per day</Label>
+                      <Input 
+                        id="simQuota"
+                        type="number"
+                        value={generationSettings.simQuota}
+                        onChange={(e) => setGenerationSettings({...generationSettings, simQuota: parseInt(e.target.value) || 150})}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="cooldownInterval">Cooldown (seconds)</Label>
+                      <Input 
+                        id="cooldownInterval"
+                        type="number"
+                        value={generationSettings.cooldownInterval}
+                        onChange={(e) => setGenerationSettings({...generationSettings, cooldownInterval: parseInt(e.target.value) || 30})}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label>Time Window</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input 
+                        type="time"
+                        value={generationSettings.timeWindow.start}
+                        onChange={(e) => setGenerationSettings({
+                          ...generationSettings, 
+                          timeWindow: {...generationSettings.timeWindow, start: e.target.value}
+                        })}
+                      />
+                      <span className="text-muted-foreground">to</span>
+                      <Input 
+                        type="time"
+                        value={generationSettings.timeWindow.end}
+                        onChange={(e) => setGenerationSettings({
+                          ...generationSettings, 
+                          timeWindow: {...generationSettings.timeWindow, end: e.target.value}
+                        })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <Dialog>
             <DialogTrigger asChild>
               <Button size="sm" className="bg-gradient-primary shadow-primary">
@@ -203,6 +537,9 @@ export function AIMessages() {
                   <div className="flex justify-between text-xs text-muted-foreground mt-1">
                     <span>Characters: {originalMessage.length}</span>
                     <span>SMS segments: {Math.ceil(originalMessage.length / 160)}</span>
+                    <span className={originalMessage.length > generationSettings.maxCharLimit ? "text-destructive" : ""}>
+                      Limit: {generationSettings.maxCharLimit}
+                    </span>
                   </div>
                 </div>
 
@@ -244,6 +581,13 @@ export function AIMessages() {
                         {tone}
                       </Badge>
                     ))}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-muted/30 rounded-md">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Estimated Cost:</span>
+                    <span className="font-medium">{Math.ceil(originalMessage.length / 160) * 5} credits</span>
                   </div>
                 </div>
 
@@ -322,10 +666,10 @@ export function AIMessages() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Avg. Rating</p>
-                    <p className="text-2xl font-bold">4.5</p>
+                    <p className="text-sm text-muted-foreground">Estimated Cost</p>
+                    <p className="text-2xl font-bold">{calculateEstimatedCost()}</p>
                   </div>
-                  <ThumbsUp className="h-8 w-8 text-success" />
+                  <BarChart3 className="h-8 w-8 text-warning" />
                 </div>
               </CardContent>
             </Card>
@@ -355,10 +699,16 @@ export function AIMessages() {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <Label className="text-sm font-medium">AI Variations ({template.variations.length})</Label>
-                      <Button variant="ghost" size="sm">
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        Regenerate
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="sm">
+                          <Download className="h-3 w-3 mr-1" />
+                          Export
+                        </Button>
+                        <Button variant="ghost" size="sm">
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                          Regenerate
+                        </Button>
+                      </div>
                     </div>
                     
                     <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -366,7 +716,7 @@ export function AIMessages() {
                         <div key={variation.id} className="p-3 border rounded-md space-y-2">
                           <div className="text-sm">{variation.variation}</div>
                           <div className="flex items-center justify-between">
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-wrap">
                               <Badge variant="secondary" className={getToneColor(variation.tone)}>
                                 {variation.tone}
                               </Badge>
@@ -377,6 +727,15 @@ export function AIMessages() {
                               <Badge variant="outline" className={`text-xs ${getCharacterCountColor(variation.characterCount)}`}>
                                 {variation.characterCount} chars
                               </Badge>
+                              <Badge variant="outline" className="text-xs">
+                                {variation.encoding}
+                              </Badge>
+                              {variation.spamScore && (
+                                <Badge variant="outline" className={`text-xs ${getSpamScoreColor(variation.spamScore)}`}>
+                                  <AlertTriangle className="h-3 w-3 mr-1" />
+                                  Spam: {variation.spamScore.toFixed(1)}
+                                </Badge>
+                              )}
                             </div>
                             <div className="flex gap-1">
                               <Button variant="ghost" size="sm">
@@ -406,26 +765,49 @@ export function AIMessages() {
         </TabsContent>
 
         <TabsContent value="variations" className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold">Active Message Variations</h2>
+            <div className="flex gap-2">
+              <Select>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Export options" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="csv" onSelect={() => handleExportVariations("csv")}>
+                    Export as CSV
+                  </SelectItem>
+                  <SelectItem value="txt" onSelect={() => handleExportVariations("txt")}>
+                    Export as TXT
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="sm">
+                <Filter className="h-4 w-4 mr-2" />
+                Filter
+              </Button>
+            </div>
+          </div>
+
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Zap className="h-5 w-5" />
-                Active Message Variations
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="p-6">
               <div className="space-y-4">
                 {mockMessageTemplates[0].variations.map((variation) => (
                   <div key={variation.id} className="p-4 border rounded-lg space-y-3">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="text-sm mb-2">{variation.variation}</div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <Badge variant="secondary" className={getToneColor(variation.tone)}>
                             {variation.tone}
                           </Badge>
                           <Badge variant="outline" className="text-xs">
                             {variation.characterCount} chars
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {variation.encoding}
+                          </Badge>
+                          <Badge variant="outline" className={`text-xs ${getSpamScoreColor(variation.spamScore || 0)}`}>
+                            Spam: {(variation.spamScore || 0).toFixed(1)}
                           </Badge>
                           <Badge variant="outline" className="text-xs">
                             Rating: {variation.rating}/5
@@ -535,6 +917,38 @@ export function AIMessages() {
                       <div>
                         <p className="text-sm font-medium">Rotate between 3-5 variations per campaign</p>
                         <p className="text-xs text-muted-foreground">Message rotation reduces carrier filtering by 23%</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 border rounded-lg">
+                  <h3 className="font-medium mb-4">Cost Analysis</h3>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Encoding Impact</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>GSM-7 Encoding</span>
+                          <span className="text-success">1 credit per SMS</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>Unicode Encoding</span>
+                          <span className="text-warning">2 credits per SMS</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Current Usage</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Total Variations</span>
+                          <span>{mockMessageTemplates.reduce((sum, t) => sum + t.variations.length, 0)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>Estimated Cost</span>
+                          <span className="font-medium">{calculateEstimatedCost()} credits</span>
+                        </div>
                       </div>
                     </div>
                   </div>

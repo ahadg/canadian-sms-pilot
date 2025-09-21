@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
+import { parse } from 'papaparse';
 
 export interface Campaign {
   id: string;
@@ -17,6 +18,17 @@ export interface Campaign {
   message_preview?: string;
   priority: 'low' | 'normal' | 'high';
   contact_list_id?: string;
+}
+
+export interface Contact {
+  id: string;
+  contact_list_id: string;
+  phone_number: string;
+  first_name?: string;
+  last_name?: string;
+  opted_in: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ContactList {
@@ -60,6 +72,133 @@ export function useCampaigns() {
     } catch (error) {
       console.error('Error fetching campaigns:', error);
       toast.error('Failed to load campaigns');
+    }
+  };
+
+   // Fetch contacts for a specific list
+   const fetchContacts = async (contactListId: string) => {
+    if (!user) return [];
+    
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('contact_list_id', contactListId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching contacts:', error);
+      toast.error('Failed to load contacts');
+      return [];
+    }
+  };
+  const addContacts = async (
+    contactListId: string,
+    contacts: Omit<Contact, 'id' | 'created_at' | 'updated_at'>[]
+  ) => {
+    if (!user) return;
+  
+    try {
+      const { data: inserted, error: insertErr } = await supabase
+        .from('contacts')
+        .insert(
+          contacts.map(c => ({
+            ...c,
+            contact_list_id: contactListId,
+            user_id: user.id,
+          }))
+        )
+        .select(); // or .select('id')
+  
+      if (insertErr) throw insertErr;
+  
+      // compute deltas
+      const optedInDelta = contacts.filter(c => c.opted_in).length;
+      const totalDelta = contacts.length;
+  
+      // get current counts
+      const { data: list, error: getErr } = await supabase
+        .from('contact_lists')
+        .select('total_contacts, opted_in')
+        .eq('id', contactListId)
+        .single();
+  
+      if (getErr) throw getErr;
+  
+      // update with new totals
+      const { error: updErr } = await supabase
+        .from('contact_lists')
+        .update({
+          total_contacts: (list?.total_contacts ?? 0) + totalDelta,
+          opted_in: (list?.opted_in ?? 0) + optedInDelta,
+        })
+        .eq('id', contactListId);
+  
+      if (updErr) throw updErr;
+  
+      await fetchContactLists();
+      toast.success(`Added ${contacts.length} contacts successfully`);
+      return inserted;
+    } catch (error) {
+      console.error('Error adding contacts:', error);
+      toast.error('Failed to add contacts');
+      throw error;
+    }
+  };
+  
+  const importContactsFromFile = async (contactListId: string, file: File) => {
+    return new Promise((resolve, reject) => {
+      parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          try {
+            const contacts = results.data.map((row: any) => ({
+              phone_number: row.phone || row.phone_number || row.number || '',
+              first_name: row.first_name || row.firstname || row.fname || '',
+              last_name: row.last_name || row.lastname || row.lname || '',
+              opted_in: row.opted_in !== undefined 
+                ? Boolean(row.opted_in) 
+                : row.opt_in !== undefined 
+                  ? Boolean(row.opt_in) 
+                  : true // Default to opted in if not specified
+            })).filter(contact => contact.phone_number); // Filter out rows without phone numbers
+
+            if (contacts.length === 0) {
+              throw new Error('No valid contacts found in the file');
+            }
+
+            await addContacts(contactListId, contacts);
+            resolve(contacts);
+          } catch (error) {
+            reject(error);
+          }
+        },
+        error: (error) => {
+          reject(error);
+        }
+      });
+    });
+  };
+
+  // Delete contact list
+  const deleteContactList = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('contact_lists')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user?.id);
+
+      if (error) throw error;
+      
+      setContactLists(prev => prev.filter(list => list.id !== id));
+      toast.success('Contact list deleted');
+    } catch (error) {
+      console.error('Error deleting contact list:', error);
+      toast.error('Failed to delete contact list');
     }
   };
 
@@ -252,6 +391,10 @@ export function useCampaigns() {
     deleteMessageTemplate,
     fetchCampaigns,
     fetchContactLists,
-    fetchMessageTemplates
+    fetchMessageTemplates,
+    fetchContacts,
+    addContacts,
+    importContactsFromFile,
+    deleteContactList
   };
 }
