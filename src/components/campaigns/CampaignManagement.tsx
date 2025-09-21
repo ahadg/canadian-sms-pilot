@@ -464,6 +464,60 @@ export function CampaignManagement() {
                   </div>
                 </div>
 
+                <div>
+                  <Label htmlFor="aiMessage">AI Message (Optional)</Label>
+                  <Select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select AI generated message..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Use custom message above</SelectItem>
+                      <SelectItem value="ai1">Flash Sale: 20% off today only! Use SAVE20...</SelectItem>
+                      <SelectItem value="ai2">Limited time: Get 20% off all items...</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Delivery Settings */}
+                <div className="border-t pt-4">
+                  <h3 className="font-medium mb-3">Delivery Settings</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>SIM Rotation</Label>
+                      <Select defaultValue="random">
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="random">Random</SelectItem>
+                          <SelectItem value="roundRobin">Round Robin</SelectItem>
+                          <SelectItem value="weighted">Weighted</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Per SIM Quota</Label>
+                      <Input type="number" defaultValue="150" placeholder="150" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mt-3">
+                    <div>
+                      <Label>Cooldown Range (sec)</Label>
+                      <div className="flex gap-2">
+                        <Input type="number" defaultValue="30" placeholder="Min" />
+                        <Input type="number" defaultValue="120" placeholder="Max" />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Active Hours</Label>
+                      <div className="flex gap-2">
+                        <Input type="time" defaultValue="09:00" />
+                        <Input type="time" defaultValue="20:00" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex gap-2">
                   <Button variant="outline" className="flex-1">
                     <Eye className="h-4 w-4 mr-2" />

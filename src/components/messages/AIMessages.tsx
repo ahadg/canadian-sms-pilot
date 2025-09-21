@@ -25,7 +25,8 @@ import {
   Sparkles,
   Download,
   Plus,
-  X
+  X,
+  Eye
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -45,19 +46,6 @@ interface AISettings {
   bannedWords: string[];
   personalizationTags: string[];
   customInstructions: string;
-}
-
-interface DeliverySettings {
-  simRotation: 'random' | 'roundRobin' | 'weighted';
-  perSimQuota: number;
-  cooldownMin: number;
-  cooldownMax: number;
-  activeHours: {
-    start: string;
-    end: string;
-  };
-  enableDuplicateFilter: boolean;
-  spamCheckLevel: 'low' | 'medium' | 'high';
 }
 
 const DEFAULT_PROMPT = `Write 8 short SMS variants (<=160 chars) for a Canadian audience announcing a one-day 20% discount for customers who opted in. Each message must:
@@ -83,19 +71,6 @@ export function AIMessages() {
     bannedWords: ['free', 'urgent', 'limited time', 'act now'],
     personalizationTags: ['{name}', '{company}'],
     customInstructions: ''
-  });
-
-  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>({
-    simRotation: 'random',
-    perSimQuota: 150,
-    cooldownMin: 30,
-    cooldownMax: 120,
-    activeHours: {
-      start: '09:00',
-      end: '20:00'
-    },
-    enableDuplicateFilter: true,
-    spamCheckLevel: 'medium'
   });
 
   const calculateSpamScore = (content: string): number => {
@@ -267,19 +242,60 @@ export function AIMessages() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Settings Panel */}
         <div className="lg:col-span-1 space-y-4">
-          <Tabs defaultValue="message" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="message">Message</TabsTrigger>
-              <TabsTrigger value="delivery">Delivery</TabsTrigger>
-              <TabsTrigger value="safety">Safety</TabsTrigger>
+          <Tabs defaultValue="prompt" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="prompt">Prompt</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="message" className="space-y-4">
+            <TabsContent value="prompt" className="space-y-4">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <MessageSquare className="h-5 w-5" />
-                    Message Controls
+                    <Sparkles className="h-5 w-5" />
+                    AI Prompt
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div>
+                    <Label>Message Prompt</Label>
+                    <Textarea
+                      value={basePrompt}
+                      onChange={(e) => setBasePrompt(e.target.value)}
+                      placeholder="Enter your prompt for AI message generation..."
+                      className="min-h-[150px] mt-2"
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Describe what kind of messages you want the AI to generate
+                    </p>
+                  </div>
+                  <Button 
+                    onClick={generateVariants} 
+                    disabled={isGenerating || !basePrompt.trim()}
+                    className="w-full mt-4"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="h-4 w-4 mr-2" />
+                        Generate Variants
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="settings" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings className="h-5 w-5" />
+                    Generation Settings
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -396,215 +412,82 @@ export function AIMessages() {
                 </CardContent>
               </Card>
             </TabsContent>
-
-            <TabsContent value="delivery" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Shuffle className="h-5 w-5" />
-                    Delivery Settings
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label>SIM Rotation Strategy</Label>
-                    <Select 
-                      value={deliverySettings.simRotation} 
-                      onValueChange={(value: 'random' | 'roundRobin' | 'weighted') => 
-                        setDeliverySettings(prev => ({ ...prev, simRotation: value }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="random">Random</SelectItem>
-                        <SelectItem value="roundRobin">Round Robin</SelectItem>
-                        <SelectItem value="weighted">Weighted</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label>Per SIM Daily Quota</Label>
-                    <Input
-                      type="number"
-                      value={deliverySettings.perSimQuota}
-                      onChange={(e) => setDeliverySettings(prev => ({ ...prev, perSimQuota: parseInt(e.target.value) }))}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label>Min Cooldown (sec)</Label>
-                      <Input
-                        type="number"
-                        value={deliverySettings.cooldownMin}
-                        onChange={(e) => setDeliverySettings(prev => ({ ...prev, cooldownMin: parseInt(e.target.value) }))}
-                      />
-                    </div>
-                    <div>
-                      <Label>Max Cooldown (sec)</Label>
-                      <Input
-                        type="number"
-                        value={deliverySettings.cooldownMax}
-                        onChange={(e) => setDeliverySettings(prev => ({ ...prev, cooldownMax: parseInt(e.target.value) }))}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label>Active Start</Label>
-                      <Input
-                        type="time"
-                        value={deliverySettings.activeHours.start}
-                        onChange={(e) => setDeliverySettings(prev => ({ 
-                          ...prev, 
-                          activeHours: { ...prev.activeHours, start: e.target.value }
-                        }))}
-                      />
-                    </div>
-                    <div>
-                      <Label>Active End</Label>
-                      <Input
-                        type="time"
-                        value={deliverySettings.activeHours.end}
-                        onChange={(e) => setDeliverySettings(prev => ({ 
-                          ...prev, 
-                          activeHours: { ...prev.activeHours, end: e.target.value }
-                        }))}
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="safety" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Shield className="h-5 w-5" />
-                    Safety & Quality
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label>Duplicate Filter</Label>
-                    <Switch
-                      checked={deliverySettings.enableDuplicateFilter}
-                      onCheckedChange={(checked) => setDeliverySettings(prev => ({ ...prev, enableDuplicateFilter: checked }))}
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Spam Check Level</Label>
-                    <Select 
-                      value={deliverySettings.spamCheckLevel} 
-                      onValueChange={(value: 'low' | 'medium' | 'high') => 
-                        setDeliverySettings(prev => ({ ...prev, spamCheckLevel: value }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
           </Tabs>
         </div>
 
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Prompt Section */}
+        {/* Generation and Results */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Saved Messages */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5" />
-                Message Prompt
+                <MessageSquare className="h-5 w-5" />
+                Generated AI Messages
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <Textarea
-                value={basePrompt}
-                onChange={(e) => setBasePrompt(e.target.value)}
-                className="min-h-[120px]"
-                placeholder="Describe the message you want to generate variants for..."
-              />
-              <div className="flex gap-2">
-                <Button onClick={() => setBasePrompt(DEFAULT_PROMPT)} variant="outline" size="sm">
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Reset to Default
-                </Button>
-                <Button onClick={generateVariants} disabled={isGenerating} className="bg-gradient-primary">
-                  <Wand2 className="h-4 w-4 mr-2" />
-                  {isGenerating ? 'Generating...' : 'Generate Variants'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Generated Variants */}
-          {generatedVariants.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Generated Variants ({generatedVariants.length})</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Select the variants you want to use in your campaign
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {generatedVariants.map((variant) => (
-                  <div
-                    key={variant.id}
-                    className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                      selectedVariants.has(variant.id) 
-                        ? 'border-primary bg-primary/5' 
-                        : 'border-border hover:border-primary/50'
-                    }`}
-                    onClick={() => toggleVariantSelection(variant.id)}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium mb-2">{variant.content}</p>
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                          <span>{variant.length} chars</span>
-                          <span>{variant.segments} SMS</span>
-                          {getSpamBadge(variant.spamScore)}
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(variant.content);
-                        toast.success('Copied to clipboard');
-                      }}>
-                        <Copy className="h-4 w-4" />
+            <CardContent>
+              {generatedVariants.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Sparkles className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No AI messages generated yet</p>
+                  <p className="text-sm">Create a prompt and generate variants to get started</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      Generated {generatedVariants.length} variants • {selectedVariants.size} selected
+                    </p>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline">
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copy Selected
+                      </Button>
+                      <Button size="sm" variant="outline">
+                        <Download className="h-4 w-4 mr-2" />
+                        Export
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setBasePrompt(DEFAULT_PROMPT)}>
+                        <RotateCcw className="h-4 w-4 mr-2" />
+                        Reset Prompt
                       </Button>
                     </div>
                   </div>
-                ))}
-                
-                {selectedVariants.size > 0 && (
-                  <div className="flex items-center justify-between pt-4 border-t">
-                    <p className="text-sm text-muted-foreground">
-                      {selectedVariants.size} variant(s) selected
-                    </p>
-                    <Button size="sm">
-                      Use Selected Variants
-                    </Button>
+                  <div className="grid gap-3">
+                    {generatedVariants.map((variant) => (
+                      <div 
+                        key={variant.id} 
+                        className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                          selectedVariants.has(variant.id) ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
+                        }`}
+                        onClick={() => toggleVariantSelection(variant.id)}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">Variant {variant.id}</p>
+                            <div className="flex gap-2 mt-1">
+                              <Badge variant="outline" className="text-xs">{variant.length} chars</Badge>
+                              <Badge variant="outline" className="text-xs">{variant.segments} SMS</Badge>
+                              {getSpamBadge(variant.spamScore)}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="ghost">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost">
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{variant.content}</p>
+                      </div>
+                    ))}
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
