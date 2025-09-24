@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 import { parse } from 'papaparse';
+import { Message } from 'node_modules/react-hook-form/dist/types';
+import { smsService, type SmsTask, type DeviceConfig } from '@/services/smsService';
 
 export interface Campaign {
   id: string;
@@ -19,6 +21,18 @@ export interface Campaign {
   priority: 'low' | 'normal' | 'high';
   contact_list_id?: string;
 }
+
+// Add this interface
+export interface Device {
+  id: string;
+  name: string;
+  ip_address: string;
+  port: number;
+  status: 'online' | 'offline' | 'maintenance';
+  created_at: string;
+  updated_at: string;
+}
+
 
 export interface Contact {
   id: string;
@@ -53,8 +67,177 @@ export function useCampaigns() {
   const { user } = useAuth();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [contactLists, setContactLists] = useState<ContactList[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplate[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Fetch available devices
+  const fetchDevices = async (): Promise<Device[]> => {
+    if (!user) return [];
+    
+    try {
+      const { data, error } = await supabase
+        .from('devices')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching devices:', error);
+      toast.error('Failed to load devices');
+      return [];
+    }
+  };
+
+  // Send SMS campaign
+  const sendCampaignSms = async (
+    campaignId: string,
+    deviceConfig: DeviceConfig,
+    contactIds: string[]
+  ) => {
+    if (!user) throw new Error('User not authenticated');
+
+    try {
+      console.log("sendCampaignSms",{campaignId,deviceConfig,contactIds});
+      // Fetch campaign details
+      const { data: campaign, error: campaignError } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('id', campaignId)
+        .single();
+
+      if (campaignError) throw campaignError;
+
+      // Fetch contacts
+      const { data: contacts, error: contactsError } = await supabase
+        .from('contacts')
+        .select('*')
+        .in('id', contactIds)
+        .eq('opted_in', true);
+
+      if (contactsError) throw contactsError;
+
+      if (contacts.length === 0) {
+        throw new Error('No opted-in contacts found');
+      }
+
+      // Create SMS tasks
+      const tasks: SmsTask[] = contacts.map(contact => ({
+        tid: `${campaignId}-${contact.id}-${Date.now()}`,
+        to: contact.phone_number,
+        sms: campaign.message_content,
+        chs: 'utf8' as const,
+        coding: campaign.message_content.length > 160 ? 1 : 0, // USC2 for long messages
+      }));
+
+      // Send SMS via device
+      const result = await smsService.sendSms(deviceConfig, tasks);
+
+      if (result.code !== 200) {
+        throw new Error(`SMS sending failed: ${result.reason}`);
+      }
+
+      // Update campaign statistics
+      const { error: updateError } = await supabase
+        .from('campaigns')
+        .update({
+          sent_messages: campaign.sent_messages + contacts.length,
+          status: 'active'
+        })
+        .eq('id', campaignId);
+
+      if (updateError) throw updateError;
+
+      // Log the SMS sending activity
+      await supabase
+        .from('sms_logs')
+        .insert(contacts.map(contact => ({
+          campaign_id: campaignId,
+          contact_id: contact.id,
+          phone_number: contact.phone_number,
+          message_content: campaign.message_content,
+          status: 'sent',
+          device_ip: deviceConfig.device_ip,
+          user_id: user.id
+        })));
+
+      toast.success(`SMS sent successfully to ${contacts.length} contacts`);
+      return result;
+    } catch (error) {
+      console.error('Error sending campaign SMS:', error);
+      toast.error('Failed to send SMS campaign');
+      throw error;
+    }
+  };
+
+  // Start campaign (send to all contacts in the associated list)
+  const startCampaign = async (campaignId: string, deviceConfig: DeviceConfig) => {
+    if (!user) throw new Error('User not authenticated');
+  
+    try {
+      console.log("send_command_here");
+  
+      // 1) Load the campaign and (optionally) its list record
+      const { data: campaign, error: campaignError } = await supabase
+        .from('campaigns')
+        .select(`
+          id,
+          contact_list_id,
+          status,
+          contact_lists:contact_list_id (
+            id,
+            name
+          )
+        `)
+        .eq('id', campaignId)
+        .maybeSingle();
+  
+      if (campaignError) throw campaignError;
+      if (!campaign) throw new Error('Campaign not found');
+      if (!campaign.contact_list_id) {
+        throw new Error('Campaign does not have a contact list assigned');
+      }
+  
+      // 2) Fetch opted-in contacts for that list
+      const { data: contacts, error: contactsError } = await supabase
+        .from('contacts')
+        .select('id, phone_number, first_name, last_name')
+        .eq('contact_list_id', campaign.contact_list_id)
+        .eq('opted_in', true);
+  
+      if (contactsError) throw contactsError;
+      if (!contacts || contacts.length === 0) {
+        throw new Error('No opted-in contacts found in the selected list');
+      }
+  
+      // 3) Send messages
+      await sendCampaignSms(
+        campaignId,
+        deviceConfig,
+        contacts.map((c) => c.id)
+      );
+  
+      // 4) Update campaign status AFTER successful send
+      await updateCampaignStatus(campaignId, 'active');
+    } catch (error) {
+      console.error('Error starting campaign:', error);
+      throw error;
+    }
+  };
+  
+
+  // Test campaign (send to a few contacts)
+  const testCampaign = async (campaignId: string, deviceConfig: DeviceConfig, testContactIds: string[]) => {
+    try {
+      await sendCampaignSms(campaignId, deviceConfig, testContactIds);
+      toast.success('Test campaign sent successfully');
+    } catch (error) {
+      console.error('Error testing campaign:', error);
+      throw error;
+    }
+  };
 
   // Fetch campaigns
   const fetchCampaigns = async () => {
@@ -75,151 +258,41 @@ export function useCampaigns() {
     }
   };
 
-   // Fetch contacts for a specific list
-   const fetchContacts = async (contactListId: string) => {
-    if (!user) return [];
-    
-    try {
-      const { data, error } = await supabase
-        .from('contacts')
-        .select('*')
-        .eq('contact_list_id', contactListId)
-        .order('created_at', { ascending: false });
+  const getAllMessages = async () => {
+    const { data: messages, error: messagesError } = await (supabase as any)
+      .from('messages')
+      .select(`
+        *,
+        message_variants (*)
+      `)
+      .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error('Error fetching contacts:', error);
-      toast.error('Failed to load contacts');
-      return [];
-    }
-  };
-  const addContacts = async (
-    contactListId: string,
-    contacts: Omit<Contact, 'id' | 'created_at' | 'updated_at'>[]
-  ) => {
-    if (!user) return;
-  
-    try {
-      const { data: inserted, error: insertErr } = await supabase
-        .from('contacts')
-        .insert(
-          contacts.map(c => ({
-            ...c,
-            contact_list_id: contactListId,
-            user_id: user.id,
-          }))
-        )
-        .select(); // or .select('id')
-  
-      if (insertErr) throw insertErr;
-  
-      // compute deltas
-      const optedInDelta = contacts.filter(c => c.opted_in).length;
-      const totalDelta = contacts.length;
-  
-      // get current counts
-      const { data: list, error: getErr } = await supabase
-        .from('contact_lists')
-        .select('total_contacts, opted_in')
-        .eq('id', contactListId)
-        .single();
-  
-      if (getErr) throw getErr;
-  
-      // update with new totals
-      const { error: updErr } = await supabase
-        .from('contact_lists')
-        .update({
-          total_contacts: (list?.total_contacts ?? 0) + totalDelta,
-          opted_in: (list?.opted_in ?? 0) + optedInDelta,
-        })
-        .eq('id', contactListId);
-  
-      if (updErr) throw updErr;
-  
-      await fetchContactLists();
-      toast.success(`Added ${contacts.length} contacts successfully`);
-      return inserted;
-    } catch (error) {
-      console.error('Error adding contacts:', error);
-      toast.error('Failed to add contacts');
-      throw error;
-    }
-  };
-  
-  const importContactsFromFile = async (contactListId: string, file: File) => {
-    return new Promise((resolve, reject) => {
-      parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: async (results) => {
-          try {
-            const contacts = results.data.map((row: any) => ({
-              phone_number: row.phone || row.phone_number || row.number || '',
-              first_name: row.first_name || row.firstname || row.fname || '',
-              last_name: row.last_name || row.lastname || row.lname || '',
-              opted_in: row.opted_in !== undefined 
-                ? Boolean(row.opted_in) 
-                : row.opt_in !== undefined 
-                  ? Boolean(row.opt_in) 
-                  : true // Default to opted in if not specified
-            })).filter(contact => contact.phone_number); // Filter out rows without phone numbers
+    if (messagesError) throw messagesError;
 
-            if (contacts.length === 0) {
-              throw new Error('No valid contacts found in the file');
-            }
+    setMessages(messages.map(message => ({
+      id: message.id,
+      name: message.name,
+      category: message.category,
+      originalPrompt: message.original_prompt,
+      baseMessage: message.base_message,
+      variants: message.message_variants.map((variant: any) => ({
+        id: variant.id,
+        content: variant.content,
+        tone: variant.tone,
+        language: variant.language,
+        characterCount: variant.character_count,
+        spamScore: variant.spam_score,
+        encoding: variant.encoding,
+        cost: variant.cost,
+        createdAt: variant.created_at,
+      })),
+      settings: message.settings,
+      createdAt: message.created_at,
+      updatedAt: message.updated_at,
+      isTemplate: message.is_template,
+    })));
+  }
 
-            await addContacts(contactListId, contacts);
-            resolve(contacts);
-          } catch (error) {
-            reject(error);
-          }
-        },
-        error: (error) => {
-          reject(error);
-        }
-      });
-    });
-  };
-
-  // Delete contact list
-  const deleteContactList = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('contact_lists')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', user?.id);
-
-      if (error) throw error;
-      
-      setContactLists(prev => prev.filter(list => list.id !== id));
-      toast.success('Contact list deleted');
-    } catch (error) {
-      console.error('Error deleting contact list:', error);
-      toast.error('Failed to delete contact list');
-    }
-  };
-
-  // Fetch contact lists
-  const fetchContactLists = async () => {
-    if (!user) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('contact_lists')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setContactLists(data || []);
-    } catch (error) {
-      console.error('Error fetching contact lists:', error);
-      toast.error('Failed to load contact lists');
-    }
-  };
 
   // Fetch message templates
   const fetchMessageTemplates = async () => {
@@ -290,33 +363,6 @@ export function useCampaigns() {
     }
   };
 
-  // Create contact list
-  const createContactList = async (name: string) => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('contact_lists')
-        .insert([{
-          name,
-          user_id: user.id,
-          total_contacts: 0,
-          opted_in: 0
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-      
-      setContactLists(prev => [data, ...prev]);
-      toast.success('Contact list created successfully');
-      return data;
-    } catch (error) {
-      console.error('Error creating contact list:', error);
-      toast.error('Failed to create contact list');
-      throw error;
-    }
-  };
 
   // Create message template
   const createMessageTemplate = async (templateData: Omit<MessageTemplate, 'id' | 'created_at' | 'updated_at'>) => {
@@ -369,8 +415,8 @@ export function useCampaigns() {
         setLoading(true);
         await Promise.all([
           fetchCampaigns(),
-          fetchContactLists(),
-          fetchMessageTemplates()
+          fetchMessageTemplates(),
+          getAllMessages()
         ]);
         setLoading(false);
       };
@@ -382,19 +428,18 @@ export function useCampaigns() {
   return {
     campaigns,
     contactLists,
+    messages,
     messageTemplates,
     loading,
     createCampaign,
     updateCampaignStatus,
-    createContactList,
     createMessageTemplate,
     deleteMessageTemplate,
     fetchCampaigns,
-    fetchContactLists,
     fetchMessageTemplates,
-    fetchContacts,
-    addContacts,
-    importContactsFromFile,
-    deleteContactList
+    fetchDevices,
+    sendCampaignSms,
+    startCampaign,
+    testCampaign,
   };
 }

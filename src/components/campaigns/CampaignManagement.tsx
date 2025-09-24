@@ -48,203 +48,90 @@ import {
   Download,
   X,
 } from "lucide-react";
-import { useCampaigns, type Campaign, type ContactList, type MessageTemplate, type Contact } from "@/hooks/useCampaigns";
+import { Device, useCampaigns, type Campaign } from "@/hooks/useCampaigns";
 import { toast } from "sonner";
+import { ContactManager } from "./ContactManager";
+import { DeviceSelector } from "./DeviceSelector";
+import { useContactManagement } from "@/hooks/useContactManagement";
 
-// Contact Manager Component
-function ContactManager({ contactListId, open, onOpenChange }: { contactListId: string; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { fetchContacts, addContacts, importContactsFromFile } = useCampaigns();
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [newContact, setNewContact] = useState({
-    phone_number: '',
-    first_name: '',
-    last_name: '',
-    opted_in: true
-  });
-
-  const loadContacts = async () => {
-    if (!contactListId) return;
-    
-    setLoading(true);
-    try {
-      const contactsData = await fetchContacts(contactListId);
-      setContacts(contactsData);
-    } catch (error) {
-      console.error('Error loading contacts:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      setLoading(true);
-      await importContactsFromFile(contactListId, file);
-      await loadContacts();
-      toast.success('Contacts imported successfully');
-    } catch (error: any) {
-      console.error('Error importing contacts:', error);
-      toast.error(error.message || 'Failed to import contacts');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAddContact = async () => {
-    if (!newContact.phone_number) {
-      toast.error('Phone number is required');
-      return;
-    }
-
-    try {
-      await addContacts(contactListId, [{
-        ...newContact,
-        contact_list_id: contactListId
-      }]);
-      setNewContact({
-        phone_number: '',
-        first_name: '',
-        last_name: '',
-        opted_in: true
-      });
-      await loadContacts();
-      toast.success('Contact added successfully');
-    } catch (error) {
-      console.error('Error adding contact:', error);
-      toast.error('Failed to add contact');
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Manage Contacts</DialogTitle>
-          <DialogDescription>
-            Add, edit, or import contacts for this list
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {/* Import Section */}
-          <div className="border rounded-lg p-4">
-            <h3 className="font-medium mb-3">Import Contacts</h3>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="file-upload" className="cursor-pointer">
-                <Button variant="outline" asChild>
-                  <div>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Import CSV/Excel
-                  </div>
-                </Button>
-                <Input
-                  id="file-upload"
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  className="hidden"
-                  onChange={handleFileUpload}
-                />
-              </Label>
-              <Button variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Download Template
-              </Button>
-            </div>
-          </div>
-
-          {/* Add Contact Form */}
-          <div className="border rounded-lg p-4">
-            <h3 className="font-medium mb-3">Add Contact Manually</h3>
-            <div className="grid grid-cols-4 gap-2">
-              <Input
-                placeholder="Phone Number"
-                value={newContact.phone_number}
-                onChange={(e) => setNewContact(prev => ({ ...prev, phone_number: e.target.value }))}
-              />
-              <Input
-                placeholder="First Name"
-                value={newContact.first_name}
-                onChange={(e) => setNewContact(prev => ({ ...prev, first_name: e.target.value }))}
-              />
-              <Input
-                placeholder="Last Name"
-                value={newContact.last_name}
-                onChange={(e) => setNewContact(prev => ({ ...prev, last_name: e.target.value }))}
-              />
-              <Button onClick={handleAddContact}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Contact
-              </Button>
-            </div>
-          </div>
-
-          {/* Contacts Table */}
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Phone Number</TableHead>
-                  <TableHead>First Name</TableHead>
-                  <TableHead>Last Name</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {contacts.map((contact) => (
-                  <TableRow key={contact.id}>
-                    <TableCell>{contact.phone_number}</TableCell>
-                    <TableCell>{contact.first_name || '-'}</TableCell>
-                    <TableCell>{contact.last_name || '-'}</TableCell>
-                    <TableCell>
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        contact.opted_in 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {contact.opted_in ? 'Opted In' : 'Opted Out'}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="sm">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 export function CampaignManagement() {
   const {
     campaigns,
-    contactLists,
-    messageTemplates,
+    //contactLists,
     loading,
     createCampaign,
     updateCampaignStatus,
-    createContactList,
-    createMessageTemplate,
-    deleteMessageTemplate,
-    deleteContactList
+    messages
   } = useCampaigns();
-
+  const {
+    contactLists,
+    createContactList,
+    deleteContactList,
+  } = useContactManagement();
+  console.log("contactLists",contactLists);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [selectedContactListId, setSelectedContactListId] = useState<string | null>(null);
   const [isCreateCampaignOpen, setIsCreateCampaignOpen] = useState(false);
   const [isCreateContactListOpen, setIsCreateContactListOpen] = useState(false);
   const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false);
   const [isContactManagerOpen, setIsContactManagerOpen] = useState(false);
+
+  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const [showSendDialog, setShowSendDialog] = useState(false);
+
+  const { startCampaign, testCampaign } = useCampaigns();
+
+  const handleStartCampaign = async (campaign: Campaign) => {
+    if (!selectedDevice) {
+      toast.error('Please select a device first');
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      const deviceConfig = {
+        device_ip: selectedDevice.ip_address,
+        device_port: selectedDevice.port,
+        version: '1.1'
+      };
+
+      await startCampaign(campaign.id, deviceConfig);
+      setShowSendDialog(false);
+    } catch (error) {
+      // Error handled in the hook
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleTestCampaign = async (campaign: Campaign) => {
+    if (!selectedDevice) {
+      toast.error('Please select a device first');
+      return;
+    }
+
+    // For testing, you might want to select specific test contacts
+    // This is a simplified version - you might want to create a proper test contact selection
+    const testContactIds = ['test-contact-1', 'test-contact-2']; // You'll need to implement proper test contact selection
+    
+    setIsSending(true);
+    try {
+      const deviceConfig = {
+        device_ip: selectedDevice.ip_address,
+        device_port: selectedDevice.port,
+        version: '1.1'
+      };
+
+      await testCampaign(campaign.id, deviceConfig, testContactIds);
+    } catch (error) {
+      // Error handled in the hook
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   
   // Form states
   const [campaignForm, setCampaignForm] = useState({
@@ -256,11 +143,6 @@ export function CampaignManagement() {
   });
   
   const [contactListName, setContactListName] = useState('');
-  const [templateForm, setTemplateForm] = useState({
-    name: '',
-    content: '',
-    category: 'general'
-  });
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -329,24 +211,6 @@ export function CampaignManagement() {
     }
   };
 
-  const handleCreateTemplate = async () => {
-    if (!templateForm.name || !templateForm.content) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
-    try {
-      await createMessageTemplate(templateForm);
-      setIsCreateTemplateOpen(false);
-      setTemplateForm({
-        name: '',
-        content: '',
-        category: 'general'
-      });
-    } catch (error) {
-      // Error is handled in the hook
-    }
-  };
 
   if (loading) {
     return (
@@ -355,6 +219,76 @@ export function CampaignManagement() {
       </div>
     );
   }
+
+  const renderCampaignActions = (campaign: Campaign) => (
+    <div className="flex gap-1">
+      {campaign.status === "scheduled" && (
+        <>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => {
+              setSelectedCampaign(campaign);
+              setShowSendDialog(true);
+            }}
+            disabled={isSending}
+          >
+            <Send className="h-3 w-3" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => handleTestCampaign(campaign)}
+            disabled={isSending}
+          >
+            <Play className="h-3 w-3" />
+          </Button>
+        </>
+      )}
+      {/* ... existing action buttons ... */}
+    </div>
+  );
+
+  // Add the send dialog
+  const renderSendDialog = () => (
+    <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Send Campaign</DialogTitle>
+          <DialogDescription>
+            Select a device and send "{selectedCampaign?.name}" campaign
+          </DialogDescription>
+        </DialogHeader>
+        
+        <DeviceSelector
+          onDeviceSelect={setSelectedDevice}
+          selectedDevice={selectedDevice}
+        />
+        
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            className="flex-1" 
+            onClick={() => setShowSendDialog(false)}
+          >
+            Cancel
+          </Button>
+          <Button 
+            className="flex-1" 
+            onClick={() => selectedCampaign && handleStartCampaign(selectedCampaign)}
+            disabled={!selectedDevice || isSending}
+          >
+            {isSending ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Send className="h-4 w-4 mr-2" />
+            )}
+            Send Campaign
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 
   return (
     <div className="flex-1 space-y-6 p-6">
@@ -408,7 +342,7 @@ export function CampaignManagement() {
                       <SelectContent>
                         {contactLists.map((list) => (
                           <SelectItem key={list.id} value={list.id}>
-                            {list.name} ({list.opted_in.toLocaleString()} contacts)
+                            {list.name} ({list?.opted_in_count?.toLocaleString()} contacts)
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -471,9 +405,11 @@ export function CampaignManagement() {
                       <SelectValue placeholder="Select AI generated message..." />
                     </SelectTrigger>
                     <SelectContent>
+                    {messages?.map((message : any) => (
+                      <SelectItem key={message?.id} value={message?.id}>{message?.baseMessage}</SelectItem>
+                    ))} 
                       <SelectItem value="none">Use custom message above</SelectItem>
-                      <SelectItem value="ai1">Flash Sale: 20% off today only! Use SAVE20...</SelectItem>
-                      <SelectItem value="ai2">Limited time: Get 20% off all items...</SelectItem>
+                     
                     </SelectContent>
                   </Select>
                 </div>
@@ -538,7 +474,6 @@ export function CampaignManagement() {
         <TabsList>
           <TabsTrigger value="campaigns">Active Campaigns</TabsTrigger>
           <TabsTrigger value="contacts">Contact Lists</TabsTrigger>
-          <TabsTrigger value="templates">Message Templates</TabsTrigger>
         </TabsList>
 
         <TabsContent value="campaigns" className="space-y-6">
@@ -583,7 +518,7 @@ export function CampaignManagement() {
                 </div>
               </CardContent>
             </Card>
-
+            {renderSendDialog()}
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -677,6 +612,9 @@ export function CampaignManagement() {
                             </Button>
                           </div>
                         </TableCell>
+                        <TableCell>
+                    {renderCampaignActions(campaign)}
+                  </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -704,16 +642,16 @@ export function CampaignManagement() {
                         <div>
                           <h3 className="font-medium">{list.name}</h3>
                           <p className="text-sm text-muted-foreground">
-                            Last updated: {new Date(list.updated_at).toLocaleDateString()}
+                            Last updated: {new Date(list?.updated_at).toLocaleDateString()}
                           </p>
                         </div>
                         
                         <div className="space-y-2">
                           <div className="flex justify-between text-sm">
                             <span>Opted In</span>
-                            <span>{list.opted_in.toLocaleString()}/{list.total_contacts.toLocaleString()}</span>
+                            <span>{list?.opted_in_count}/{list?.total_contacts}</span>
                           </div>
-                          <Progress value={list.total_contacts > 0 ? (list.opted_in / list.total_contacts) * 100 : 0} />
+                          <Progress value={list?.total_contacts > 0 ? (list?.opted_in_count / list?.total_contacts) * 100 : 0} />
                         </div>
 
                         <div className="flex gap-2">
@@ -722,7 +660,7 @@ export function CampaignManagement() {
                             size="sm" 
                             className="flex-1"
                             onClick={() => {
-                              setSelectedContactListId(list.id);
+                              setSelectedContactListId(list?.id);
                               setIsContactManagerOpen(true);
                             }}
                           >
@@ -745,6 +683,7 @@ export function CampaignManagement() {
                     </CardContent>
                   </Card>
                 ))}
+
                 
                 {/* Add New List Card */}
                 <Dialog open={isCreateContactListOpen} onOpenChange={setIsCreateContactListOpen}>
@@ -794,122 +733,6 @@ export function CampaignManagement() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="templates" className="space-y-6">
-          {/* Message Templates */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Message Templates
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {messageTemplates.map((template) => (
-                  <div key={template.id} className="p-4 border rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <h3 className="font-medium">{template.name}</h3>
-                        <Badge variant="outline" className="text-xs mt-1">
-                          {template.category}
-                        </Badge>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="sm">
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => deleteMessageTemplate(template.id)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      {template.content}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {template.content.length} characters
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        Created: {new Date(template.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-
-                <Dialog open={isCreateTemplateOpen} onOpenChange={setIsCreateTemplateOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create New Template
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Create Message Template</DialogTitle>
-                      <DialogDescription>
-                        Create a reusable message template for your campaigns
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="templateName">Template Name</Label>
-                        <Input 
-                          id="templateName" 
-                          placeholder="Welcome Message"
-                          value={templateForm.name}
-                          onChange={(e) => setTemplateForm(prev => ({ ...prev, name: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="templateCategory">Category</Label>
-                        <Select 
-                          value={templateForm.category}
-                          onValueChange={(value) => setTemplateForm(prev => ({ ...prev, category: value }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="general">General</SelectItem>
-                            <SelectItem value="promotional">Promotional</SelectItem>
-                            <SelectItem value="transactional">Transactional</SelectItem>
-                            <SelectItem value="notifications">Notifications</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="templateContent">Message Content</Label>
-                        <Textarea 
-                          id="templateContent" 
-                          placeholder="Enter your message template..."
-                          className="min-h-[100px]"
-                          value={templateForm.content}
-                          onChange={(e) => setTemplateForm(prev => ({ ...prev, content: e.target.value }))}
-                        />
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {templateForm.content.length} characters
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" className="flex-1" onClick={() => setIsCreateTemplateOpen(false)}>
-                          Cancel
-                        </Button>
-                        <Button className="flex-1" onClick={handleCreateTemplate}>
-                          Create Template
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       {/* Contact Manager Dialog */}
