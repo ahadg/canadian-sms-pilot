@@ -20,6 +20,31 @@ export interface Campaign {
   message_preview?: string;
   priority: 'low' | 'normal' | 'high';
   contact_list_id?: string;
+  device_id?: string; // Add device reference
+  task_settings?: { // Add task settings
+    interval: number;
+    timeout: number;
+    coding: number;
+    sms_type: number;
+    // Add other task settings as needed
+  };
+}
+
+export interface SmsTask {
+  tid: string;
+  from?: string;
+  to: string; // Can be comma-separated numbers
+  sms: string;
+  chs?: 'utf8' | 'base64';
+  coding?: number;
+  smstype?: number;
+  intvl?: number;
+  tmo?: number;
+  sdr?: number;
+  fdr?: number;
+  dr?: number;
+  sr_prd?: number;
+  sr_cnt?: number;
 }
 
 // Add this interface
@@ -31,6 +56,9 @@ export interface Device {
   status: 'online' | 'offline' | 'maintenance';
   created_at: string;
   updated_at: string;
+  username: string;
+  password: string;
+  user_id: string;
 }
 
 
@@ -98,47 +126,51 @@ export function useCampaigns() {
     contactIds: string[]
   ) => {
     if (!user) throw new Error('User not authenticated');
-
+  
     try {
-      console.log("sendCampaignSms",{campaignId,deviceConfig,contactIds});
+      console.log("sendCampaignSms", { campaignId, deviceConfig, contactIds });
+      
       // Fetch campaign details
       const { data: campaign, error: campaignError } = await supabase
         .from('campaigns')
         .select('*')
         .eq('id', campaignId)
         .single();
-
+  
       if (campaignError) throw campaignError;
-
+  
       // Fetch contacts
       const { data: contacts, error: contactsError } = await supabase
         .from('contacts')
         .select('*')
         .in('id', contactIds)
         .eq('opted_in', true);
-
+  
       if (contactsError) throw contactsError;
-
+  
       if (contacts.length === 0) {
         throw new Error('No opted-in contacts found');
       }
-
-      // Create SMS tasks
-      const tasks: SmsTask[] = contacts.map(contact => ({
-        tid: `${campaignId}-${contact.id}-${Date.now()}`,
-        to: contact.phone_number,
+  
+      // Create SMS tasks in new format
+      const tasks: SmsTask[] = [{
+        id: `${campaignId}-${Date.now()}`,
+        recipients: contacts.map(contact => contact.phone_number),
         sms: campaign.message_content,
         chs: 'utf8' as const,
-        coding: campaign.message_content.length > 160 ? 1 : 0, // USC2 for long messages
-      }));
-
+        coding: campaign.task_settings?.coding || (campaign.message_content.length > 160 ? 1 : 0),
+        smstype: campaign.task_settings?.sms_type || 0,
+        intvl: campaign.task_settings?.interval || 10,
+        tmo: campaign.task_settings?.timeout || 30,
+      }];
+  
       // Send SMS via device
       const result = await smsService.sendSms(deviceConfig, tasks);
-
+  
       if (result.code !== 200) {
         throw new Error(`SMS sending failed: ${result.reason}`);
       }
-
+  
       // Update campaign statistics
       const { error: updateError } = await supabase
         .from('campaigns')
@@ -147,22 +179,9 @@ export function useCampaigns() {
           status: 'active'
         })
         .eq('id', campaignId);
-
+  
       if (updateError) throw updateError;
-
-      // Log the SMS sending activity
-      await supabase
-        .from('sms_logs')
-        .insert(contacts.map(contact => ({
-          campaign_id: campaignId,
-          contact_id: contact.id,
-          phone_number: contact.phone_number,
-          message_content: campaign.message_content,
-          status: 'sent',
-          device_ip: deviceConfig.device_ip,
-          user_id: user.id
-        })));
-
+  
       toast.success(`SMS sent successfully to ${contacts.length} contacts`);
       return result;
     } catch (error) {

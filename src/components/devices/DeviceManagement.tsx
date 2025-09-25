@@ -112,7 +112,7 @@ class EjoinAPIService {
   // Get device status - now uses the correct endpoint
   static async getDeviceStatus(device: Device): Promise<DeviceStatus | null> {
     try {
-      const response = await authFetch(`/goip_get_status.html?username=${device.username}&password=Gasdank!23&device_ip=${device.ip_address}&device_port=${device.port}`, {
+      const response = await authFetch(`/goip_get_status?device_id=${device.id}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -159,7 +159,7 @@ class EjoinAPIService {
   static async getSIMCards(device: Device): Promise<SIMCard[]> {
     try {
       const statusData = await EjoinAPIService.getDeviceStatus(device);
-      
+      console.log("statusData",statusData);
       if (!statusData || !statusData.status || !Array.isArray(statusData.status)) {
         console.error('Invalid status data received');
         return [];

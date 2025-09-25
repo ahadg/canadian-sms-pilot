@@ -2,7 +2,7 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { supabase } from '@/lib/supabase';
 
-const baseURL =
+export const baseURL =
   import.meta.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
 
 // Create an axios instance with defaults
@@ -30,7 +30,7 @@ export async function authFetch<T = any>(
       headers['Authorization'] = `Bearer ${session.access_token}`;
     }
 
-    console.log('Request:', baseURL + url, headers['Authorization']);
+    console.log('Request:', url, headers['Authorization']);
 
     const response = await api.request<T>({
       url,

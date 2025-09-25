@@ -68,14 +68,14 @@ export function DeviceSelector({ onDeviceSelect, selectedDevice }: DeviceSelecto
   return (
     <div className="space-y-3">
       <h3 className="font-medium">Select Device</h3>
-      {devices.length === 0 ? (
+      {devices?.length === 0 ? (
         <Card>
           <CardContent className="p-4 text-center text-muted-foreground">
             No devices configured. Please add devices in the settings.
           </CardContent>
         </Card>
       ) : (
-        devices.map((device) => (
+        devices?.map((device) => (
           <Card 
             key={device.id}
             className={`cursor-pointer transition-colors ${

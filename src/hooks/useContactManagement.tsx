@@ -262,8 +262,8 @@ export function useContactManagement() {
       if (error) throw error;
       
       setContacts(prev => prev.map(contact => 
-        contact.id === contactId ? data : contact
-      ));
+        contact.id === contactId ? { ...contact, ...data } : contact
+    ));
       
       return data;
     } catch (error) {

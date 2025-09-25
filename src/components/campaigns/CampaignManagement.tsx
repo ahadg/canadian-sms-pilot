@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -51,125 +51,168 @@ import {
 import { Device, useCampaigns, type Campaign } from "@/hooks/useCampaigns";
 import { toast } from "sonner";
 import { ContactManager } from "./ContactManager";
-import { DeviceSelector } from "./DeviceSelector";
 import { useContactManagement } from "@/hooks/useContactManagement";
+import { supabase } from "@/lib/supabase";
 
+// Canadian SMS rules template
+const CANADIAN_SMS_TEMPLATE = `Your message here. Reply STOP to unsubscribe.`;
 
 export function CampaignManagement() {
   const {
     campaigns,
-    //contactLists,
     loading,
     createCampaign,
     updateCampaignStatus,
-    messages
+    messages,
+    fetchDevices,
+    startCampaign,
+    testCampaign,
   } = useCampaigns();
+  
   const {
     contactLists,
     createContactList,
     deleteContactList,
   } = useContactManagement();
-  console.log("contactLists",contactLists);
+
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [selectedContactListId, setSelectedContactListId] = useState<string | null>(null);
   const [isCreateCampaignOpen, setIsCreateCampaignOpen] = useState(false);
   const [isCreateContactListOpen, setIsCreateContactListOpen] = useState(false);
-  const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false);
   const [isContactManagerOpen, setIsContactManagerOpen] = useState(false);
-
+  const [devices, setDevices] = useState<Device[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [showSendDialog, setShowSendDialog] = useState(false);
+  const [selectedMessageVariant, setSelectedMessageVariant] = useState<string>('');
 
-  const { startCampaign, testCampaign } = useCampaigns();
+  // Task settings state
+  const [taskSettings, setTaskSettings] = useState({
+    interval: 10,
+    timeout: 30,
+    coding: 0,
+    sms_type: 0
+  });
 
-  const handleStartCampaign = async (campaign: Campaign) => {
-    if (!selectedDevice) {
-      toast.error('Please select a device first');
+  // Campaign form state with Canadian template as default
+  const [campaignForm, setCampaignForm] = useState({
+    name: '',
+    message_content: CANADIAN_SMS_TEMPLATE,
+    contact_list_id: '',
+    priority: 'normal' as 'low' | 'normal' | 'high',
+    status: 'scheduled' as Campaign['status'],
+    device_id: '',
+  });
+
+  // Load devices on component mount
+  useEffect(() => {
+    const loadDevices = async () => {
+      try {
+        const deviceList = await fetchDevices();
+        setDevices(deviceList);
+        // Auto-select first device if available
+        if (deviceList.length > 0 && !campaignForm.device_id) {
+          setCampaignForm(prev => ({ ...prev, device_id: deviceList[0].id }));
+        }
+      } catch (error) {
+        console.error('Error loading devices:', error);
+      }
+    };
+
+    loadDevices();
+  }, []);
+
+  // Handle AI message variant selection
+  const handleMessageVariantSelect = (variantId: string) => {
+    if (variantId === 'none') {
+      setCampaignForm(prev => ({ 
+        ...prev, 
+        message_content: CANADIAN_SMS_TEMPLATE 
+      }));
+      setSelectedMessageVariant('');
       return;
     }
 
+    // Find the selected variant from messages
+    const selectedVariant = messages.flatMap((message: any) => 
+      message.variants || []
+    ).find((variant: any) => variant.id === variantId);
+
+    if (selectedVariant) {
+      setCampaignForm(prev => ({ 
+        ...prev, 
+        message_content: selectedVariant.content 
+      }));
+      setSelectedMessageVariant(variantId);
+    }
+  };
+
+  // Start campaign handler
+  const handleStartCampaign = async (campaign: Campaign) => {
+
     setIsSending(true);
     try {
+      console.log("campaign",campaign)
+      const the_device = devices?.find(d => d.id === campaign.device_id);
+      console.log("the_device",the_device)
       const deviceConfig = {
-        device_ip: selectedDevice.ip_address,
-        device_port: selectedDevice.port,
-        version: '1.1'
+        device_ip: the_device?.ip_address,
+        device_port: the_device?.port,
+        version: '1.1',
+        device_id: the_device?.id,
+        username: the_device?.username,
+        password: the_device?.password
       };
 
       await startCampaign(campaign.id, deviceConfig);
       setShowSendDialog(false);
     } catch (error) {
-      // Error handled in the hook
+      console.error('Error starting campaign:', error);
     } finally {
       setIsSending(false);
     }
   };
 
+  // Test campaign handler
   const handleTestCampaign = async (campaign: Campaign) => {
     if (!selectedDevice) {
       toast.error('Please select a device first');
       return;
     }
 
-    // For testing, you might want to select specific test contacts
-    // This is a simplified version - you might want to create a proper test contact selection
-    const testContactIds = ['test-contact-1', 'test-contact-2']; // You'll need to implement proper test contact selection
+    const testContactIds = ['test-contact-1', 'test-contact-2'];
     
     setIsSending(true);
     try {
       const deviceConfig = {
         device_ip: selectedDevice.ip_address,
         device_port: selectedDevice.port,
-        version: '1.1'
+        version: '1.1',
+        device_id: selectedDevice.id,
+        username: selectedDevice.username,
+        password: selectedDevice.password
       };
 
       await testCampaign(campaign.id, deviceConfig, testContactIds);
     } catch (error) {
-      // Error handled in the hook
+      console.error('Error testing campaign:', error);
     } finally {
       setIsSending(false);
     }
   };
 
-  
-  // Form states
-  const [campaignForm, setCampaignForm] = useState({
-    name: '',
-    message_content: '',
-    contact_list_id: '',
-    priority: 'normal' as 'low' | 'normal' | 'high',
-    status: 'scheduled' as Campaign['status']
-  });
-  
-  const [contactListName, setContactListName] = useState('');
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "active":
-        return <Badge variant="secondary" className="bg-success/10 text-success border-success/20">Active</Badge>;
-      case "paused":
-        return <Badge variant="secondary" className="bg-warning/10 text-warning border-warning/20">Paused</Badge>;
-      case "completed":
-        return <Badge variant="secondary" className="bg-info/10 text-info border-info/20">Completed</Badge>;
-      case "scheduled":
-        return <Badge variant="outline">Scheduled</Badge>;
-      default:
-        return <Badge variant="secondary">Unknown</Badge>;
-    }
-  };
-
-  const getDeliveryRate = (campaign: Campaign) => {
-    if (campaign.sent_messages === 0) return 0;
-    return (campaign.delivered_messages / campaign.sent_messages) * 100;
-  };
-
+  // Create campaign handler
   const handleCreateCampaign = async () => {
-    if (!campaignForm.name || !campaignForm.message_content) {
-      toast.error('Please fill in all required fields');
+    if (!campaignForm.name || !campaignForm.message_content || !campaignForm.device_id) {
+      toast.error('Please fill in all required fields including device selection');
       return;
     }
-
+   
+    const { data : contacts_lists , error: contactsError } = await supabase
+        .from('contact_lists')
+        .select('total_contacts')
+        .eq('id', campaignForm.contact_list_id)
+    console.log("contacts_lists",campaignForm.contact_list_id,contacts_lists)
     try {
       await createCampaign({
         name: campaignForm.name,
@@ -177,25 +220,39 @@ export function CampaignManagement() {
         contact_list_id: campaignForm.contact_list_id || undefined,
         priority: campaignForm.priority,
         status: campaignForm.status,
-        total_contacts: 0,
+        device_id: campaignForm.device_id,
+        task_settings: taskSettings,
+        total_contacts: contacts_lists?.[0]?.total_contacts || 0,
         sent_messages: 0,
         delivered_messages: 0,
         failed_messages: 0
       });
       
       setIsCreateCampaignOpen(false);
+      // Reset form
       setCampaignForm({
         name: '',
-        message_content: '',
+        message_content: CANADIAN_SMS_TEMPLATE,
         contact_list_id: '',
         priority: 'normal',
-        status: 'scheduled'
+        status: 'scheduled',
+        device_id: devices.length > 0 ? devices[0].id : ''
       });
+      setTaskSettings({
+        interval: 10,
+        timeout: 30,
+        coding: 0,
+        sms_type: 0
+      });
+      setSelectedMessageVariant('');
+      toast.success('Campaign created successfully');
     } catch (error) {
-      // Error is handled in the hook
+      console.error('Error creating campaign:', error);
     }
   };
 
+  // Create contact list handler
+  const [contactListName, setContactListName] = useState('');
   const handleCreateContactList = async () => {
     if (!contactListName.trim()) {
       toast.error('Please enter a contact list name');
@@ -207,63 +264,82 @@ export function CampaignManagement() {
       setIsCreateContactListOpen(false);
       setContactListName('');
     } catch (error) {
-      // Error is handled in the hook
+      console.error('Error creating contact list:', error);
     }
   };
 
+  // Status badge helper
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "active":
+        return <Badge variant="secondary" className="bg-green-100 text-green-800">Active</Badge>;
+      case "paused":
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Paused</Badge>;
+      case "completed":
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Completed</Badge>;
+      case "scheduled":
+        return <Badge variant="outline">Scheduled</Badge>;
+      default:
+        return <Badge variant="secondary">Unknown</Badge>;
+    }
+  };
 
-  if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
-  }
+  // Delivery rate calculator
+  const getDeliveryRate = (campaign: Campaign) => {
+    if (campaign.sent_messages === 0) return 0;
+    return (campaign.delivered_messages / campaign.sent_messages) * 100;
+  };
 
+  // Campaign actions renderer
   const renderCampaignActions = (campaign: Campaign) => (
     <div className="flex gap-1">
       {campaign.status === "scheduled" && (
-        <>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => {
-              setSelectedCampaign(campaign);
-              setShowSendDialog(true);
-            }}
-            disabled={isSending}
-          >
-            <Send className="h-3 w-3" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => handleTestCampaign(campaign)}
-            disabled={isSending}
-          >
-            <Play className="h-3 w-3" />
-          </Button>
-        </>
+        <Button 
+          variant="ghost" 
+          size="sm"
+          onClick={() => {
+            setSelectedCampaign(campaign);
+            setShowSendDialog(true);
+          }}
+          disabled={isSending}
+        >
+          <Send className="h-3 w-3" />
+        </Button>
       )}
-      {/* ... existing action buttons ... */}
+      {campaign.status === "active" && (
+        <Button 
+          variant="ghost" 
+          size="sm"
+          onClick={() => updateCampaignStatus(campaign.id, 'paused')}
+        >
+          <Pause className="h-3 w-3" />
+        </Button>
+      )}
+      {campaign.status === "paused" && (
+        <Button 
+          variant="ghost" 
+          size="sm"
+          onClick={() => updateCampaignStatus(campaign.id, 'active')}
+        >
+          <Play className="h-3 w-3" />
+        </Button>
+      )}
+      <Button variant="ghost" size="sm">
+        <Eye className="h-3 w-3" />
+      </Button>
     </div>
   );
 
-  // Add the send dialog
+  // Send dialog component
   const renderSendDialog = () => (
     <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Send Campaign</DialogTitle>
           <DialogDescription>
-            Select a device and send "{selectedCampaign?.name}" campaign
+            Send "{selectedCampaign?.name}" campaign
           </DialogDescription>
         </DialogHeader>
-        
-        <DeviceSelector
-          onDeviceSelect={setSelectedDevice}
-          selectedDevice={selectedDevice}
-        />
         
         <div className="flex gap-2">
           <Button 
@@ -276,7 +352,7 @@ export function CampaignManagement() {
           <Button 
             className="flex-1" 
             onClick={() => selectedCampaign && handleStartCampaign(selectedCampaign)}
-            disabled={!selectedDevice || isSending}
+            disabled={isSending}
           >
             {isSending ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -289,6 +365,14 @@ export function CampaignManagement() {
       </DialogContent>
     </Dialog>
   );
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 space-y-6 p-6">
@@ -307,12 +391,12 @@ export function CampaignManagement() {
           </Button>
           <Dialog open={isCreateCampaignOpen} onOpenChange={setIsCreateCampaignOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" className="bg-gradient-primary shadow-primary">
+              <Button size="sm" className="bg-blue-600 text-white hover:bg-blue-700">
                 <Plus className="h-4 w-4 mr-2" />
                 New Campaign
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create New SMS Campaign</DialogTitle>
                 <DialogDescription>
@@ -322,7 +406,7 @@ export function CampaignManagement() {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="campaignName">Campaign Name</Label>
+                    <Label htmlFor="campaignName">Campaign Name *</Label>
                     <Input 
                       id="campaignName" 
                       placeholder="Winter Sale 2024"
@@ -330,6 +414,27 @@ export function CampaignManagement() {
                       onChange={(e) => setCampaignForm(prev => ({ ...prev, name: e.target.value }))}
                     />
                   </div>
+                  <div>
+                    <Label htmlFor="device">Device *</Label>
+                    <Select 
+                      value={campaignForm.device_id}
+                      onValueChange={(value) => setCampaignForm(prev => ({ ...prev, device_id: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select device" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {devices.map((device) => (
+                          <SelectItem key={device.id} value={device.id}>
+                            {device.name} ({device.ip_address})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="contactList">Contact List</Label>
                     <Select 
@@ -348,10 +453,31 @@ export function CampaignManagement() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div>
+                    <Label htmlFor="aiMessage">AI Message Variants</Label>
+                    <Select 
+                      value={selectedMessageVariant}
+                      onValueChange={handleMessageVariantSelect}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select AI message variant..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Use custom message</SelectItem>
+                        {messages?.flatMap((message: any) => 
+                          (message.variants || []).map((variant: any) => (
+                            <SelectItem key={variant.id} value={variant.id}>
+                              {variant.content.substring(0, 50)}... ({variant.tone})
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 
                 <div>
-                  <Label htmlFor="message">Message Content</Label>
+                  <Label htmlFor="message">Message Content *</Label>
                   <Textarea 
                     id="message" 
                     placeholder="Enter your SMS message here..."
@@ -361,6 +487,9 @@ export function CampaignManagement() {
                   />
                   <div className="text-xs text-muted-foreground mt-1">
                     {campaignForm.message_content.length} characters • {Math.ceil(campaignForm.message_content.length / 160)} SMS segment(s)
+                    {campaignForm.message_content.length > 160 && (
+                      <span className="text-amber-600 ml-2">Long message (USC2 encoding will be used)</span>
+                    )}
                   </div>
                 </div>
 
@@ -398,58 +527,77 @@ export function CampaignManagement() {
                   </div>
                 </div>
 
-                <div>
-                  <Label htmlFor="aiMessage">AI Message (Optional)</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select AI generated message..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                    {messages?.map((message : any) => (
-                      <SelectItem key={message?.id} value={message?.id}>{message?.baseMessage}</SelectItem>
-                    ))} 
-                      <SelectItem value="none">Use custom message above</SelectItem>
-                     
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Delivery Settings */}
+                {/* Task Settings Section */}
                 <div className="border-t pt-4">
-                  <h3 className="font-medium mb-3">Delivery Settings</h3>
+                  <h3 className="font-medium mb-3">Task Settings</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label>SIM Rotation</Label>
-                      <Select defaultValue="random">
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="random">Random</SelectItem>
-                          <SelectItem value="roundRobin">Round Robin</SelectItem>
-                          <SelectItem value="weighted">Weighted</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="interval">Interval (seconds) *</Label>
+                      <Input 
+                        id="interval"
+                        type="number" 
+                        value={taskSettings.interval}
+                        onChange={(e) => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          interval: parseInt(e.target.value) || 10 
+                        }))}
+                        min="1"
+                        max="3600"
+                      />
                     </div>
                     <div>
-                      <Label>Per SIM Quota</Label>
-                      <Input type="number" defaultValue="150" placeholder="150" />
+                      <Label htmlFor="timeout">Timeout (seconds) *</Label>
+                      <Input 
+                        id="timeout"
+                        type="number" 
+                        value={taskSettings.timeout}
+                        onChange={(e) => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          timeout: parseInt(e.target.value) || 30 
+                        }))}
+                        min="10"
+                        max="300"
+                      />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4 mt-3">
                     <div>
-                      <Label>Cooldown Range (sec)</Label>
-                      <div className="flex gap-2">
-                        <Input type="number" defaultValue="30" placeholder="Min" />
-                        <Input type="number" defaultValue="120" placeholder="Max" />
-                      </div>
+                      <Label htmlFor="coding">Message Coding</Label>
+                      <Select 
+                        value={taskSettings.coding.toString()}
+                        onValueChange={(value) => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          coding: parseInt(value) 
+                        }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select coding" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">Auto-detect</SelectItem>
+                          <SelectItem value="1">USC2 (Unicode)</SelectItem>
+                          <SelectItem value="2">GSM 7-bit</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div>
-                      <Label>Active Hours</Label>
-                      <div className="flex gap-2">
-                        <Input type="time" defaultValue="09:00" />
-                        <Input type="time" defaultValue="20:00" />
-                      </div>
+                      <Label htmlFor="smsType">SMS Type</Label>
+                      <Select 
+                        value={taskSettings.sms_type.toString()}
+                        onValueChange={(value) => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          sms_type: parseInt(value) 
+                        }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select SMS type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">Normal SMS</SelectItem>
+                          <SelectItem value="1">Flash SMS</SelectItem>
+                          <SelectItem value="2">Unicode SMS</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
@@ -486,7 +634,7 @@ export function CampaignManagement() {
                     <p className="text-sm text-muted-foreground">Total Campaigns</p>
                     <p className="text-2xl font-bold">{campaigns.length}</p>
                   </div>
-                  <Send className="h-8 w-8 text-primary" />
+                  <Send className="h-8 w-8 text-blue-500" />
                 </div>
               </CardContent>
             </Card>
@@ -500,7 +648,7 @@ export function CampaignManagement() {
                       {campaigns.filter(c => c.status === "active").length}
                     </p>
                   </div>
-                  <Play className="h-8 w-8 text-success" />
+                  <Play className="h-8 w-8 text-green-500" />
                 </div>
               </CardContent>
             </Card>
@@ -514,11 +662,11 @@ export function CampaignManagement() {
                       {campaigns.reduce((sum, c) => sum + c.sent_messages, 0).toLocaleString()}
                     </p>
                   </div>
-                  <BarChart3 className="h-8 w-8 text-info" />
+                  <BarChart3 className="h-8 w-8 text-purple-500" />
                 </div>
               </CardContent>
             </Card>
-            {renderSendDialog()}
+
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -530,11 +678,13 @@ export function CampaignManagement() {
                         : 0}%
                     </p>
                   </div>
-                  <Users className="h-8 w-8 text-warning" />
+                  <Users className="h-8 w-8 text-orange-500" />
                 </div>
               </CardContent>
             </Card>
           </div>
+
+          {renderSendDialog()}
 
           {/* Campaigns Table */}
           <Card>
@@ -547,6 +697,7 @@ export function CampaignManagement() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Campaign</TableHead>
+                      <TableHead>Device</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Progress</TableHead>
                       <TableHead>Delivery Rate</TableHead>
@@ -555,68 +706,49 @@ export function CampaignManagement() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {campaigns.map((campaign) => (
-                      <TableRow key={campaign.id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{campaign.name}</div>
-                            <div className="text-xs text-muted-foreground truncate max-w-xs">
-                              {campaign.message_preview || campaign.message_content.substring(0, 50) + '...'}
+                    {campaigns.map((campaign) => {
+                      const assignedDevice = devices.find(d => d.id === campaign.device_id);
+                      return (
+                        <TableRow key={campaign.id}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{campaign.name}</div>
+                              <div className="text-xs text-muted-foreground truncate max-w-xs">
+                                {campaign.message_preview || campaign.message_content.substring(0, 50) + '...'}
+                              </div>
                             </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{getStatusBadge(campaign.status)}</TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm text-muted-foreground">
+                              {assignedDevice ? assignedDevice.name : 'No device'}
+                            </div>
+                          </TableCell>
+                          <TableCell>{getStatusBadge(campaign.status)}</TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <div className="text-sm">
+                                {campaign.sent_messages.toLocaleString()}/{campaign.total_contacts.toLocaleString()}
+                              </div>
+                              <Progress 
+                                value={campaign.total_contacts > 0 ? (campaign.sent_messages / campaign.total_contacts) * 100 : 0} 
+                                className="h-2 w-24"
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell>
                             <div className="text-sm">
-                              {campaign.sent_messages.toLocaleString()}/{campaign.total_contacts.toLocaleString()}
+                              {getDeliveryRate(campaign).toFixed(1)}%
                             </div>
-                            <Progress 
-                              value={campaign.total_contacts > 0 ? (campaign.sent_messages / campaign.total_contacts) * 100 : 0} 
-                              className="h-2 w-24"
-                            />
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {getDeliveryRate(campaign).toFixed(1)}%
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {new Date(campaign.created_at).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            {campaign.status === "active" ? (
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                onClick={() => updateCampaignStatus(campaign.id, 'paused')}
-                              >
-                                <Pause className="h-3 w-3" />
-                              </Button>
-                            ) : campaign.status === "paused" ? (
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                onClick={() => updateCampaignStatus(campaign.id, 'active')}
-                              >
-                                <Play className="h-3 w-3" />
-                              </Button>
-                            ) : null}
-                            <Button variant="ghost" size="sm">
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                            <Button variant="ghost" size="sm">
-                              <Eye className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                    {renderCampaignActions(campaign)}
-                  </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(campaign.created_at).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            {renderCampaignActions(campaign)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -642,16 +774,16 @@ export function CampaignManagement() {
                         <div>
                           <h3 className="font-medium">{list.name}</h3>
                           <p className="text-sm text-muted-foreground">
-                            Last updated: {new Date(list?.updated_at).toLocaleDateString()}
+                            Last updated: {new Date(list.updated_at).toLocaleDateString()}
                           </p>
                         </div>
                         
                         <div className="space-y-2">
                           <div className="flex justify-between text-sm">
                             <span>Opted In</span>
-                            <span>{list?.opted_in_count}/{list?.total_contacts}</span>
+                            <span>{list.opted_in_count}/{list.total_contacts}</span>
                           </div>
-                          <Progress value={list?.total_contacts > 0 ? (list?.opted_in_count / list?.total_contacts) * 100 : 0} />
+                          <Progress value={list.total_contacts > 0 ? (list.opted_in_count / list.total_contacts) * 100 : 0} />
                         </div>
 
                         <div className="flex gap-2">
@@ -660,7 +792,7 @@ export function CampaignManagement() {
                             size="sm" 
                             className="flex-1"
                             onClick={() => {
-                              setSelectedContactListId(list?.id);
+                              setSelectedContactListId(list.id);
                               setIsContactManagerOpen(true);
                             }}
                           >
@@ -684,7 +816,6 @@ export function CampaignManagement() {
                   </Card>
                 ))}
 
-                
                 {/* Add New List Card */}
                 <Dialog open={isCreateContactListOpen} onOpenChange={setIsCreateContactListOpen}>
                   <DialogTrigger asChild>
@@ -732,7 +863,6 @@ export function CampaignManagement() {
             </CardContent>
           </Card>
         </TabsContent>
-
       </Tabs>
 
       {/* Contact Manager Dialog */}
