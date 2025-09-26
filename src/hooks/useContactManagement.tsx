@@ -1,7 +1,7 @@
 // hooks/useContactManagement.ts
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from './useAuth';
+import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from 'sonner';
 import { parse } from 'papaparse';
 
@@ -46,7 +46,7 @@ export interface ContactFilters {
 }
 
 export function useContactManagement() {
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactLists, setContactLists] = useState<ContactList[]>([]);
   const [loading, setLoading] = useState(false);

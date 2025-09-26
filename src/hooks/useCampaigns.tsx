@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 import { parse } from 'papaparse';
 import { Message } from 'node_modules/react-hook-form/dist/types';
 import { smsService, type SmsTask, type DeviceConfig } from '@/services/smsService';
-
+import { useAuthStore } from "@/store/useAuthStore";
 export interface Campaign {
   id: string;
   name: string;
@@ -92,7 +91,7 @@ export interface MessageTemplate {
 }
 
 export function useCampaigns() {
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [contactLists, setContactLists] = useState<ContactList[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);

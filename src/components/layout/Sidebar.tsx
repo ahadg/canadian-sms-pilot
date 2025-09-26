@@ -11,8 +11,7 @@ import {
   MessageSquare,
   LogOut,
 } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
-
+import { useAuthStore } from "@/store/useAuthStore";
 interface SidebarProps {
   activeSection: string;
   onSectionChange: (section: string) => void;
@@ -52,7 +51,7 @@ const navigationItems = [
 ];
 
 export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
-  const { signOut } = useAuth();
+  const { logout } = useAuthStore();
   
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-card">
@@ -108,7 +107,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
         <Button
           variant="ghost"
           className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"
-          onClick={signOut}
+          onClick={logout}
         >
           <LogOut className="h-4 w-4" />
           Sign Out

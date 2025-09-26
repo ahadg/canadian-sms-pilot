@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase"; // Import your Supabase client
-import { authFetch } from "@/lib/api";
+import { EjoinAPIService } from "./utils";
 
 interface Device {
   id: string;
@@ -76,238 +76,9 @@ interface SIMCard {
   inserted: boolean;
 }
 
-interface PortStatus {
-  port: string;
-  sim: string;
-  seq: number;
-  st: number;
-  imei: string;
-  active: number;
-  inserted: number;
-  slot_active: number;
-  led: number;
-  network: number;
-  iccid?: string;
-  imsi?: string;
-  sn?: string;
-  opr?: string;
-  bal?: string;
-  sig?: number;
-}
 
-interface DeviceStatus {
-  type: string;
-  seq: number;
-  expires: number;
-  mac: string;
-  ip: string;
-  ver?: string;
-  "max-ports": number;
-  "max-slot": number;
-  status: PortStatus[];
-}
 
-// API Service Functions - Updated to use backend routes
-class EjoinAPIService {
-  // Get device status - now uses the correct endpoint
-  static async getDeviceStatus(device: Device): Promise<DeviceStatus | null> {
-    try {
-      const response = await authFetch(`/goip_get_status?device_id=${device.id}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
 
-      console.log("response", response);
-
-      // if (!response.ok) {
-      //   throw new Error(`HTTP error! status: ${response.status}`);
-      // }
-
-      return response;
-    } catch (error) {
-      console.error('Error fetching device status:', error);
-      return null;
-    }
-  }
-
-  // Send command to device
-  static async sendCommand(device: Device, command: any): Promise<boolean> {
-    try {
-      // const response = await authFetch(`/goip_send_cmd.html?device_ip=${device.ip_address}&device_port=${device.port}`, {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify(command),
-      // });
-
-      // if (!response.ok) {
-      //   throw new Error(`HTTP error! status: ${response.status}`);
-      // }
-
-      // const result = await response.json();
-      // return result.success;
-    } catch (error) {
-      console.error('Error sending command:', error);
-      return false;
-    }
-  }
-
-  // Get SIM cards - using the correct endpoint and fixed data mapping
-  static async getSIMCards(device: Device): Promise<SIMCard[]> {
-    try {
-      const statusData = await EjoinAPIService.getDeviceStatus(device);
-      console.log("statusData",statusData);
-      if (!statusData || !statusData.status || !Array.isArray(statusData.status)) {
-        console.error('Invalid status data received');
-        return [];
-      }
-
-      // Transform the API response to match our SIMCard interface
-      return statusData.status.map((port: PortStatus, index: number) => ({
-        slotId: index + 1,
-        port: port.port || `${index + 1}.01`,
-        imei: port.imei || 'N/A',
-        carrier: port.opr || 'Unknown',
-        status: EjoinAPIService.getSIMStatus(port.st, port.inserted),
-        signalStrength: port.sig || 0,
-        dailySent: 0, // These would come from your statistics endpoint
-        dailyLimit: 100, // Default limit
-        lastActivity: new Date().toLocaleString(),
-        iccid: port.iccid || 'N/A',
-        imsi: port.imsi || 'N/A',
-        balance: port.bal || '0.00',
-        inserted: Boolean(port.inserted),
-      }));
-    } catch (error) {
-      console.error('Error fetching SIM cards:', error);
-      return [];
-    }
-  }
-
-  // Add device function remains the same
-  static async addDevice(deviceData: any): Promise<{success: boolean, device?: Device, message?: string}> {
-    try {
-      const { data: userRes, error: userErr } = await supabase.auth.getUser();
-      if (userErr || !userRes.user) throw new Error('Not authenticated');
-  
-      const { data, error } = await supabase
-        .from('devices')
-        .insert([{
-          user_id: userRes.user.id,        // 👈 REQUIRED for your policy
-          name: deviceData.name,
-          ip_address: deviceData.ipAddress,
-          port: deviceData.port,
-          username: deviceData.username,
-          password: deviceData.password,
-          location: deviceData.location,
-          total_slots: 512,
-          active_slots: 0,
-          status: 'offline'
-        }])
-        .select()
-        .single();
-  
-      if (error) throw new Error(error.message);
-      return { success: true, device: data };
-    } catch (error: any) {
-      console.error('Error adding device:', error);
-      return { success: false, message: error.message };
-    }
-  }
-
-  // Refresh device function - updated to use correct endpoint
-  static async refreshDevice(deviceId: string): Promise<{success: boolean, device?: Device, message?: string}> {
-    try {
-      // First, get the device from Supabase
-      const { data: device, error: fetchError } = await supabase
-        .from('devices')
-        .select('*')
-        .eq('id', deviceId)
-        .single();
-
-      if (fetchError) {
-        throw new Error(fetchError.message);
-      }
-
-      // Try to get the actual device status using the correct endpoint
-      try {
-        const statusData = await EjoinAPIService.getDeviceStatus(device);
-        
-        if (statusData && statusData.status) {
-          // Count active slots (SIMs that are inserted and active)
-          const activeSlotsCount = statusData.status.filter((port: PortStatus) => 
-            port.inserted === 1 && port.active === 1
-          ).length;
-
-          // Update the device in Supabase with new status
-          const { data: updatedDevice, error: updateError } = await supabase
-            .from('devices')
-            .update({
-              status: 'online',
-              active_slots: activeSlotsCount,
-              total_slots: statusData["max-ports"] || device.total_slots,
-              last_seen: new Date().toISOString()
-            })
-            .eq('id', deviceId)
-            .select()
-            .single();
-
-          if (updateError) {
-            throw new Error(updateError.message);
-          }
-
-          return { success: true, device: updatedDevice };
-        } else {
-          throw new Error('Device not responding');
-        }
-      } catch (error) {
-        console.error('Device communication error:', error);
-        // If device is not responding, mark it as offline
-        const { data: updatedDevice, error: updateError } = await supabase
-          .from('devices')
-          .update({
-            status: 'offline',
-            last_seen: new Date().toISOString()
-          })
-          .eq('id', deviceId)
-          .select()
-          .single();
-
-        if (updateError) {
-          throw new Error(updateError.message);
-        }
-
-        return { success: false, device: updatedDevice, message: 'Device is offline or not responding' };
-      }
-    } catch (error: any) {
-      console.error('Error refreshing device:', error);
-      return { success: false, message: error.message };
-    }
-  }
-
-  // Helper method to get SIM status from status code and inserted state
-  private static getSIMStatus(statusCode: number, inserted: number): "active" | "inactive" | "error" {
-    // If SIM is not inserted, it's inactive
-    if (!inserted) return "inactive";
-    
-    // Status codes based on Ejoin documentation
-    // 0: No SIM, 1: PIN required, 3: Ready, 4: Ready (roaming), 15: Ready
-    switch (statusCode) {
-      case 3:
-      case 4:
-      case 15:
-        return "active";
-      case 0:
-      case 1:
-        return "inactive";
-      default:
-        return "error";
-    }
-  }
-}
 
 export function DeviceManagement() {
   const [devices, setDevices] = useState<Device[]>([]);
@@ -337,15 +108,8 @@ export function DeviceManagement() {
   const loadDevices = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('devices')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
+      const data = await EjoinAPIService.getDevices()
+      console.log("loadDevices_data",data)
       setDevices(data || []);
       
       // Auto-select first device if none selected
@@ -362,10 +126,11 @@ export function DeviceManagement() {
 
   const refreshDeviceStatus = async (device: Device) => {
     try {
-      const result = await EjoinAPIService.refreshDevice(device.id);
-      
+      console.log("refreshDeviceStatus",device)
+      const result = await EjoinAPIService.refreshDevice(device);
+      console.log("refreshDeviceStatus_result",result)
       if (result?.success && result?.device) {
-        setDevices(prev => prev.map(d => d.id === device.id ? result.device as Device : d));
+        setDevices(prev => prev.map((d : any) => d.id === device.id ? result.device : d));
         toast.success(`${device.name} refreshed successfully`);
         return result.device;
       } else {
@@ -387,7 +152,7 @@ export function DeviceManagement() {
     }
   };
 
-  const loadDeviceSIMs = async (device: Device) => {
+  const loadDeviceSIMs = async (device: any) => {
     try {
       setSimCards([]); // Clear existing data
       const sims = await EjoinAPIService.getSIMCards(device);
@@ -423,10 +188,10 @@ export function DeviceManagement() {
       }
 
       const result = await EjoinAPIService.addDevice(newDevice);
-      
+      console.log("handleAddDevice",result)
       if (result.success && result.device) {
         // Add to state
-        setDevices(prev => [result.device as Device, ...prev]);
+        setDevices((prev : any) => [result.device, ...prev]);
 
         // Reset form
         setNewDevice({
@@ -448,34 +213,6 @@ export function DeviceManagement() {
     }
   };
 
-  const handleSendCommand = async (device: Device, command: any) => {
-    try {
-      const success = await EjoinAPIService.sendCommand(device, command);
-      if (success) {
-        toast.success('Command sent successfully');
-        // Refresh device status after command
-        setTimeout(() => refreshDeviceStatus(device), 2000);
-      } else {
-        toast.error('Failed to send command');
-      }
-    } catch (error) {
-      console.error('Error sending command:', error);
-      toast.error('Failed to send command');
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "online":
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case "warning":
-        return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-      case "offline":
-        return <Clock className="h-4 w-4 text-red-500" />;
-      default:
-        return <Clock className="h-4 w-4 text-gray-500" />;
-    }
-  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {

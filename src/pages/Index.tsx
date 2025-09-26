@@ -1,16 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Dashboard } from "@/components/dashboard/Dashboard";
 import { DeviceManagement } from "@/components/devices/DeviceManagement";
 import { CampaignManagement } from "@/components/campaigns/CampaignManagement";
 import { AIMessages } from "@/components/messages/AIMessages";
 import { Analytics } from "@/components/analytics/Analytics";
-import { Auth } from "@/pages/Auth";
-import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { Auth } from "./Auth";
+import { useAuthStore } from "@/store/useAuthStore";
+import { Toaster } from "@/components/ui/toaster";
 
 function AppContent() {
   const [activeSection, setActiveSection] = useState("dashboard");
-  const { user, loading } = useAuth();
+  const { user, isAuthenticated, loading, checkAuth } = useAuthStore();
+
+  useEffect(() => {
+    // Check authentication status on app load
+    checkAuth();
+  }, [checkAuth]);
 
   if (loading) {
     return (
@@ -20,7 +26,7 @@ function AppContent() {
     );
   }
 
-  if (!user) {
+  if (!isAuthenticated || !user) {
     return <Auth />;
   }
 
@@ -48,18 +54,19 @@ function AppContent() {
 
   return (
     <div className="flex h-screen bg-background">
-      <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
+      <Sidebar 
+        activeSection={activeSection} 
+        onSectionChange={setActiveSection} 
+        //user={user}
+      />
       <main className="flex-1 overflow-auto">
         {renderContent()}
       </main>
+      <Toaster />
     </div>
   );
 }
 
-export default function Index() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
-  );
+export default function App() {
+  return <AppContent />;
 }
