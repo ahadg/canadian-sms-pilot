@@ -68,7 +68,7 @@ export async function authFetch<T = any>(
       ...options,
     });
 
-    return response.data.data as T;
+    return response.data as any;
   } catch (error: any) {
     console.error('API request failed:', error.response?.data || error.message);
     
@@ -106,17 +106,7 @@ export const apiClient = {
     authFetch<T>(url, { method: 'DELETE' }),
 };
 
-// Specific API methods for your application
-export const campaignAPI = {
-  // Campaign methods
-  getAll: (params?: any) => apiClient.get('/api/campaigns', params),
-  getById: (id: string) => apiClient.get(`/api/campaigns/${id}`),
-  create: (data: any) => apiClient.post('/api/campaigns', data),
-  update: (id: string, data: any) => apiClient.put(`/api/campaigns/${id}`, data),
-  delete: (id: string) => apiClient.delete(`/api/campaigns/${id}`),
-  updateStats: (id: string, data: any) => apiClient.patch(`/api/campaigns/${id}/stats`, data),
-  updateStatus: (id: string, status: string) => apiClient.post(`/api/campaigns/${id}/status`, { status }),
-};
+
 
 export const deviceAPI = {
   // Device methods
@@ -129,47 +119,6 @@ export const deviceAPI = {
   updateStats: (id: string, data: any) => apiClient.patch(`/api/devices/${id}/stats`, data),
 };
 
-export const contactAPI = {
-  // Contact list methods
-  getLists: () => apiClient.get('/api/contacts/lists'),
-  getListById: (id: string) => apiClient.get(`/api/contacts/lists/${id}`),
-  createList: (data: any) => apiClient.post('/api/contacts/lists', data),
-  updateList: (id: string, data: any) => apiClient.put(`/api/contacts/lists/${id}`, data),
-  deleteList: (id: string) => apiClient.delete(`/api/contacts/lists/${id}`),
-  
-  // Contact methods
-  getContacts: (listId: string, params?: any) => 
-    apiClient.get(`/api/contacts/lists/${listId}/contacts`, params),
-  createContact: (listId: string, data: any) => 
-    apiClient.post(`/api/contacts/lists/${listId}/contacts`, data),
-  updateContact: (id: string, data: any) => 
-    apiClient.put(`/api/contacts/contacts/${id}`, data),
-  deleteContact: (id: string) => 
-    apiClient.delete(`/api/contacts/contacts/${id}`),
-  importContacts: (listId: string, contacts: any[]) => 
-    apiClient.post(`/api/contacts/lists/${listId}/contacts/import`, { contacts }),
-};
-
-export const messageAPI = {
-  // Message methods
-  getAll: (params?: any) => apiClient.get('/api/messages', params),
-  getById: (id: string) => apiClient.get(`/api/messages/${id}`),
-  create: (data: any) => apiClient.post('/api/messages', data),
-  update: (id: string, data: any) => apiClient.put(`/api/messages/${id}`, data),
-  delete: (id: string) => apiClient.delete(`/api/messages/${id}`),
-  
-  // Variant methods
-  getVariants: (messageId: string) => 
-    apiClient.get(`/api/messages/${messageId}/variants`),
-  createVariant: (messageId: string, data: any) => 
-    apiClient.post(`/api/messages/${messageId}/variants`, data),
-  
-  // Template methods
-  getTemplates: () => apiClient.get('/api/messages/templates'),
-  createTemplate: (data: any) => apiClient.post('/api/messages/templates', data),
-  updateTemplate: (id: string, data: any) => apiClient.put(`/api/messages/templates/${id}`, data),
-  deleteTemplate: (id: string) => apiClient.delete(`/api/messages/templates/${id}`),
-};
 
 export const authAPI = {
   // Auth methods (without token)

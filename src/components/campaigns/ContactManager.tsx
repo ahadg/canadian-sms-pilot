@@ -44,17 +44,17 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
   const [searchTerm, setSearchTerm] = useState("");
   const [editableContacts, setEditableContacts] = useState<any[]>([]);
   const [newContact, setNewContact] = useState({
-    phone_number: '',
-    country_code: '+1',
-    first_name: '',
-    last_name: '',
+    phoneNumber: '',
+    countryCode: '+1',
+    firstName: '',
+    lastName: '',
     email: '',
     //company: '',
-    opted_in_count: 1,
+    optedInCount: 1,
     opted_out_count: 0,
   });
 
-  const currentContactList = contactLists.find(list => list.id === contactListId);
+  const currentContactList = contactLists.find((list: any) => list._id === contactListId);
 
   useEffect(() => {
     if (open && contactListId) {
@@ -110,7 +110,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
   };
 
   const handleAddContact = async () => {
-    if (!newContact.phone_number.trim()) {
+    if (!newContact.phoneNumber.trim()) {
       toast.error('Phone number is required');
       return;
     }
@@ -118,13 +118,13 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
     try {
       await addContact(contactListId, newContact);
       setNewContact({
-        phone_number: '',
-        country_code: '+1',
-        first_name: '',
-        last_name: '',
+        phoneNumber: '',
+        countryCode: '+1',
+        firstName: '',
+        lastName: '',
         email: '',
         //company: '',
-        opted_in_count: 0,
+        optedInCount: 0,
         opted_out_count: 0,
       });
       toast.success('Contact added successfully');
@@ -192,7 +192,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
   };
 
   const downloadTemplate = () => {
-    const csvContent = "phone_number,country_code,first_name,last_name,email,opted_in\n+1234567890,+1,John,Doe,john@example.com,true";
+    const csvContent = "phoneNumber,countryCode,firstName,lastName,email,opted_in\n+1234567890,+1,John,Doe,john@example.com,true";
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -211,9 +211,9 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
             {currentContactList?.name} - Contact Management
           </DialogTitle>
           <DialogDescription>
-            {currentContactList?.total_contacts} total contacts • 
-            {currentContactList?.opted_in_count} opted in • 
-            {currentContactList?.opted_out_count} opted out
+            {currentContactList?.totalContacts} total contacts • 
+            {currentContactList?.optedInCount} opted in • 
+            {currentContactList?.optedOutCount} opted out
           </DialogDescription>
         </DialogHeader>
 
@@ -242,8 +242,8 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                   </div>
                   
                   <Select 
-                    value={filters.opted_in?.toString() || ''} 
-                    onValueChange={(value) => setFilters(prev => ({ ...prev, opted_in: value === 'true' }))}
+                    value={filters.optedIn?.toString() || ''} 
+                    onValueChange={(value) => setFilters(prev => ({ ...prev, optedIn: value === 'true' }))}
                   >
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Opt-in Status" />
@@ -305,16 +305,16 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                             <TableCell className="font-mono">
                               {contact.isEditing ? (
                                 <Input
-                                  value={contact.tempData?.phone_number || ''}
+                                  value={contact.tempData?.phoneNumber || ''}
                                   onChange={(e) => setEditableContacts(prev => 
                                     prev.map(c => c.id === contact.id 
-                                      ? { ...c, tempData: { ...c.tempData, phone_number: e.target.value } }
+                                      ? { ...c, tempData: { ...c.tempData, phoneNumber: e.target.value } }
                                       : c
                                     )
                                   )}
                                 />
                               ) : (
-                                `${contact.country_code} ${contact.phone_number}`
+                                `${contact.countryCode} ${contact.phoneNumber}`
                               )}
                             </TableCell>
                             <TableCell>
@@ -322,27 +322,27 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                                 <div className="flex gap-2">
                                   <Input
                                     placeholder="First name"
-                                    value={contact.tempData?.first_name || ''}
+                                    value={contact.tempData?.firstName || ''}
                                     onChange={(e) => setEditableContacts(prev => 
                                       prev.map(c => c.id === contact.id 
-                                        ? { ...c, tempData: { ...c.tempData, first_name: e.target.value } }
+                                        ? { ...c, tempData: { ...c.tempData, firstName: e.target.value } }
                                         : c
                                       )
                                     )}
                                   />
                                   <Input
                                     placeholder="Last name"
-                                    value={contact.tempData?.last_name || ''}
+                                    value={contact.tempData?.lastName || ''}
                                     onChange={(e) => setEditableContacts(prev => 
                                       prev.map(c => c.id === contact.id 
-                                        ? { ...c, tempData: { ...c.tempData, last_name: e.target.value } }
+                                        ? { ...c, tempData: { ...c.tempData, lastName: e.target.value } }
                                         : c
                                       )
                                     )}
                                   />
                                 </div>
                               ) : (
-                                `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || '-'
+                                `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || '-'
                               )}
                             </TableCell>
                             <TableCell>
@@ -380,19 +380,19 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                               {contact.isEditing ? (
                                 <div className="flex items-center gap-2">
                                   <Switch
-                                    checked={contact.tempData?.opted_in_count || false}
+                                    checked={contact.tempData?.optedInCount || false}
                                     onCheckedChange={(checked) => setEditableContacts(prev => 
                                       prev.map(c => c.id === contact.id 
-                                        ? { ...c, tempData: { ...c.tempData, opted_in_count: checked } }
+                                        ? { ...c, tempData: { ...c.tempData, optedInCount: checked } }
                                         : c
                                       )
                                     )}
                                   />
-                                  <span className="text-sm">{contact.tempData?.opted_in_count ? 'Opted In' : 'Opted Out'}</span>
+                                  <span className="text-sm">{contact.tempData?.optedInCount ? 'Opted In' : 'Opted Out'}</span>
                                 </div>
                               ) : (
-                                <Badge variant={contact.opted_in_count ? "default" : "secondary"}>
-                                  {contact.opted_in_count ? 'Opted In' : 'Opted Out'}
+                                <Badge variant={contact.optedIn ? "default" : "secondary"}>
+                                  {contact.optedIn ? 'Opted In' : 'Opted Out'}
                                 </Badge>
                               )}
                             </TableCell>
@@ -446,8 +446,8 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                     <Input
                       id="phone"
                       placeholder="1234567890"
-                      value={newContact.phone_number}
-                      onChange={(e) => setNewContact(prev => ({ ...prev, phone_number: e.target.value }))}
+                      value={newContact.phoneNumber}
+                      onChange={(e) => setNewContact(prev => ({ ...prev, phoneNumber: e.target.value }))}
                     />
                   </div>
                   <div>
@@ -455,8 +455,8 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                     <Input
                       id="countryCode"
                       placeholder="+1"
-                      value={newContact.country_code}
-                      onChange={(e) => setNewContact(prev => ({ ...prev, country_code: e.target.value }))}
+                      value={newContact.countryCode}
+                      onChange={(e) => setNewContact(prev => ({ ...prev, countryCode: e.target.value }))}
                     />
                   </div>
                   <div>
@@ -464,8 +464,8 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                     <Input
                       id="firstName"
                       placeholder="John"
-                      value={newContact.first_name}
-                      onChange={(e) => setNewContact(prev => ({ ...prev, first_name: e.target.value }))}
+                      value={newContact.firstName}
+                      onChange={(e) => setNewContact(prev => ({ ...prev, firstName: e.target.value }))}
                     />
                   </div>
                   <div>
@@ -473,8 +473,8 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                     <Input
                       id="lastName"
                       placeholder="Doe"
-                      value={newContact.last_name}
-                      onChange={(e) => setNewContact(prev => ({ ...prev, last_name: e.target.value }))}
+                      value={newContact.lastName}
+                      onChange={(e) => setNewContact(prev => ({ ...prev, lastName: e.target.value }))}
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -490,8 +490,8 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                   
                   <div className="flex items-center gap-2">
                     <Switch
-                      checked={newContact.opted_in_count === 1}
-                      onCheckedChange={(checked) => setNewContact(prev => ({ ...prev, opted_in_count: checked ? 1 : 0 }))}
+                      checked={newContact.optedInCount == 1}
+                      onCheckedChange={(checked) => setNewContact(prev => ({ ...prev, optedInCount: checked ? 1 : 0 }))}
                     />
                     <Label htmlFor="optedIn">Opted In</Label>
                   </div>
@@ -543,8 +543,8 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                 </div>
                 
                 <div className="text-sm text-muted-foreground">
-                  <p><strong>Required column:</strong> phone_number</p>
-                  <p><strong>Optional columns:</strong> country_code, first_name, last_name, email, opted_in</p>
+                  <p><strong>Required column:</strong> phoneNumber</p>
+                  <p><strong>Optional columns:</strong> countryCode, firstName, lastName, email, opted_in</p>
                   <p><strong>Format:</strong> CSV with header row</p>
                 </div>
               </CardContent>

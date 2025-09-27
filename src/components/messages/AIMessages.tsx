@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { createClient } from '@supabase/supabase-js';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,10 +34,11 @@ import {
   FileText,
   Zap
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
-
+import { useAuthStore } from "@/store/useAuthStore";
+import { messageAPI } from "@/lib/api/messages";
 
 interface MessageVariant {
+  _id?: string;
   id: string;
   content: string;
   tone: string;
@@ -51,6 +51,7 @@ interface MessageVariant {
 }
 
 interface SavedMessage {
+  _id: string;
   id: string;
   name: string;
   category: string;
@@ -91,165 +92,107 @@ const TONE_OPTIONS = ['Professional', 'Friendly', 'Casual', 'Urgent', 'Formal', 
 const LANGUAGE_OPTIONS = ['English', 'French', 'Spanish', 'German'];
 const CATEGORY_OPTIONS = ['Promotional', 'Transactional', 'Reminder', 'Welcome', 'Survey', 'Update'];
 
-// Supabase database operations
-const supabaseDatabase = {
+// MongoDB database operations using your API routes
+const messageDatabase = {
   // Save message with variants
-  saveMessage: async (message: Omit<SavedMessage, 'id' | 'createdAt' | 'updatedAt'>): Promise<SavedMessage> => {
-    const { data: messageData, error: messageError } = await supabase
-      .from('messages')
-      .insert({
+  saveMessage: async (message: Omit<SavedMessage, '_id' | 'id' | 'createdAt' | 'updatedAt'>): Promise<SavedMessage> => {
+    try {
+      const response = await messageAPI.create({
         name: message.name,
         category: message.category,
-        original_prompt: message.originalPrompt,
-        base_message: message.baseMessage,
+        originalPrompt: message.originalPrompt,
+        baseMessage: message.baseMessage,
         settings: message.settings,
-        is_template: message.isTemplate,
-      })
-      .select()
-      .single();
+        isTemplate: message.isTemplate,
+        variants: message.variants
+      });
 
-    if (messageError) throw messageError;
+      console.log("saveMessage_response",response)
 
-    // Insert variants
-    if (message.variants.length > 0) {
-      const variantsToInsert = message.variants.map((variant, index) => ({
-        message_id: messageData.id,
-        content: variant.content,
-        tone: variant.tone,
-        language: variant.language,
-        character_count: variant.characterCount,
-        spam_score: variant.spamScore,
-        encoding: variant.encoding,
-        cost: variant.cost,
-        sort_order: index,
-      }));
+      await messageAPI.createVariant(response.message._id, message.variants);
 
-      const { error: variantsError } = await supabase
-        .from('message_variants')
-        .insert(variantsToInsert);
-
-      if (variantsError) throw variantsError;
+      return {
+        _id: response.message._id,
+        id: response.message._id,
+        name: response.message.name,
+        category: response.message.category,
+        originalPrompt: response.data.message.originalPrompt,
+        baseMessage: response.message.baseMessage,
+        variants: message.variants,
+        settings: response.message.settings,
+        createdAt: response.data.message.createdAt,
+        updatedAt: response.data.message.updatedAt,
+        isTemplate: response.data.message.isTemplate,
+      };
+    } catch (error) {
+      console.error('Error saving message:', error);
+      throw error;
     }
-
-    return {
-      id: messageData.id,
-      name: messageData.name,
-      category: messageData.category,
-      originalPrompt: messageData.original_prompt,
-      baseMessage: messageData.base_message,
-      variants: message.variants,
-      settings: messageData.settings,
-      createdAt: messageData.created_at,
-      updatedAt: messageData.updated_at,
-      isTemplate: messageData.is_template,
-    };
   },
 
   // Update message with variants
   updateMessage: async (id: string, message: Partial<SavedMessage>): Promise<SavedMessage> => {
-    const { data: messageData, error: messageError } = await supabase
-      .from('messages')
-      .update({
+    try {
+      const response = await messageAPI.update(id, {
         name: message.name,
         category: message.category,
-        original_prompt: message.originalPrompt,
-        base_message: message.baseMessage,
+        originalPrompt: message.originalPrompt,
+        baseMessage: message.baseMessage,
         settings: message.settings,
-        is_template: message.isTemplate,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .select()
-      .single();
+        isTemplate: message.isTemplate,
+        variants: message.variants
+      });
 
-    if (messageError) throw messageError;
-
-    // If variants are provided, update them
-    if (message.variants) {
-      // First delete existing variants
-      await supabase
-        .from('message_variants')
-        .delete()
-        .eq('message_id', id);
-
-      // Then insert new variants
-      const variantsToInsert = message.variants.map((variant, index) => ({
-        message_id: id,
-        content: variant.content,
-        tone: variant.tone,
-        language: variant.language,
-        character_count: variant.characterCount,
-        spam_score: variant.spamScore,
-        encoding: variant.encoding,
-        cost: variant.cost,
-        sort_order: index,
-      }));
-
-      const { error: variantsError } = await supabase
-        .from('message_variants')
-        .insert(variantsToInsert);
-
-      if (variantsError) throw variantsError;
+      return {
+        _id: response.data.message._id,
+        id: response.data.message._id,
+        name: response.data.message.name,
+        category: response.data.message.category,
+        originalPrompt: response.data.message.originalPrompt,
+        baseMessage: response.data.message.baseMessage,
+        variants: message.variants || [],
+        settings: response.data.message.settings,
+        createdAt: response.data.message.createdAt,
+        updatedAt: response.data.message.updatedAt,
+        isTemplate: response.data.message.isTemplate,
+      };
+    } catch (error) {
+      console.error('Error updating message:', error);
+      throw error;
     }
-
-    return {
-      id: messageData.id,
-      name: messageData.name,
-      category: messageData.category,
-      originalPrompt: messageData.original_prompt,
-      baseMessage: messageData.base_message,
-      variants: message.variants || [],
-      settings: messageData.settings,
-      createdAt: messageData.created_at,
-      updatedAt: messageData.updated_at,
-      isTemplate: messageData.is_template,
-    };
   },
 
   // Get all messages with variants
   getAllMessages: async (): Promise<SavedMessage[]> => {
-    const { data: messages, error: messagesError } = await supabase
-      .from('messages')
-      .select(`
-        *,
-        message_variants (*)
-      `)
-      .order('created_at', { ascending: false });
-
-    if (messagesError) throw messagesError;
-
-    return messages.map(message => ({
-      id: message.id,
-      name: message.name,
-      category: message.category,
-      originalPrompt: message.original_prompt,
-      baseMessage: message.base_message,
-      variants: message.message_variants.map((variant: any) => ({
-        id: variant.id,
-        content: variant.content,
-        tone: variant.tone,
-        language: variant.language,
-        characterCount: variant.character_count,
-        spamScore: variant.spam_score,
-        encoding: variant.encoding,
-        cost: variant.cost,
-        createdAt: variant.created_at,
-      })),
-      settings: message.settings,
-      createdAt: message.created_at,
-      updatedAt: message.updated_at,
-      isTemplate: message.is_template,
-    }));
+    try {
+      const response = await messageAPI.getAll();
+      return response.data.messages.map((message: any) => ({
+        _id: message._id,
+        id: message._id,
+        name: message.name,
+        category: message.category,
+        originalPrompt: message.originalPrompt,
+        baseMessage: message.baseMessage,
+        variants: message.variants || [],
+        settings: message.settings,
+        createdAt: message.createdAt,
+        updatedAt: message.updatedAt,
+        isTemplate: message.isTemplate,
+      }));
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      throw error;
+    }
   },
 
   // Delete message and its variants
   deleteMessage: async (id: string): Promise<void> => {
-    const { error } = await supabase
-      .from('messages')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw error;
+    try {
+      await messageAPI.delete(id);
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      throw error;
+    }
   },
 };
 
@@ -259,7 +202,7 @@ export function AIMessages() {
   const [selectedMessage, setSelectedMessage] = useState<SavedMessage | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+  const { isAuthenticated } = useAuthStore();
   
   // Form states
   const [messageName, setMessageName] = useState('');
@@ -270,18 +213,14 @@ export function AIMessages() {
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    checkUser();
-    loadSavedMessages();
-  }, []);
-
-  const checkUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    setUserId(user?.id || null);
-  };
+    if (isAuthenticated) {
+      loadSavedMessages();
+    }
+  }, [isAuthenticated]);
 
   const loadSavedMessages = async () => {
     try {
-      const messages = await supabaseDatabase.getAllMessages();
+      const messages = await messageDatabase.getAllMessages();
       setSavedMessages(messages);
     } catch (error) {
       console.error('Failed to load messages:', error);
@@ -294,7 +233,7 @@ export function AIMessages() {
     setIsGenerating(true);
     
     try {
-      // Simulate AI generation
+      // Simulate AI generation - In a real app, you'd call your AI API here
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       const tones = settings.tones.length > 0 ? settings.tones : ['Professional'];
@@ -365,10 +304,10 @@ export function AIMessages() {
       
       if (selectedMessage) {
         // Update existing message
-        savedMessage = await supabaseDatabase.updateMessage(selectedMessage.id, messageData);
+        savedMessage = await messageDatabase.updateMessage(selectedMessage._id, messageData);
       } else {
         // Create new message
-        savedMessage = await supabaseDatabase.saveMessage(messageData);
+        savedMessage = await messageDatabase.saveMessage(messageData);
       }
       
       await loadSavedMessages();
@@ -407,9 +346,9 @@ export function AIMessages() {
 
   const deleteMessage = async (id: string) => {
     try {
-      await supabaseDatabase.deleteMessage(id);
+      await messageDatabase.deleteMessage(id);
       await loadSavedMessages();
-      if (selectedMessage?.id === id) {
+      if (selectedMessage?._id === id) {
         setSelectedMessage(null);
       }
     } catch (error) {
@@ -449,8 +388,32 @@ export function AIMessages() {
     return 'text-red-600';
   };
 
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      // You could add a toast notification here
+      console.log('Copied to clipboard');
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  };
+
   const templates = savedMessages.filter(m => m.isTemplate);
   const messages = savedMessages.filter(m => !m.isTemplate);
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <MessageSquare className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-lg font-semibold mb-2">Authentication Required</h3>
+            <p className="text-muted-foreground">Please sign in to access the AI Message Generator</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 space-y-6 p-6">
@@ -730,7 +693,11 @@ export function AIMessages() {
                                   Spam: {variant.spamScore.toFixed(1)}
                                 </Badge>
                               </div>
-                              <Button variant="ghost" size="sm">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => copyToClipboard(variant.content)}
+                              >
                                 <Copy className="h-4 w-4" />
                               </Button>
                             </div>
@@ -818,7 +785,7 @@ export function AIMessages() {
               </Card>
             ) : (
               messages.map((message) => (
-                <Card key={message.id}>
+                <Card key={message._id}>
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -833,9 +800,9 @@ export function AIMessages() {
                         <Button 
                           variant="ghost" 
                           size="sm"
-                          onClick={() => toggleMessageExpansion(message.id)}
+                          onClick={() => toggleMessageExpansion(message._id)}
                         >
-                          {expandedMessages.has(message.id) ? (
+                          {expandedMessages.has(message._id) ? (
                             <ChevronUp className="h-4 w-4" />
                           ) : (
                             <ChevronDown className="h-4 w-4" />
@@ -844,7 +811,7 @@ export function AIMessages() {
                         <Button variant="ghost" size="sm" onClick={() => loadTemplate(message)}>
                           <Edit3 className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => deleteMessage(message.id)}>
+                        <Button variant="ghost" size="sm" onClick={() => deleteMessage(message._id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -857,7 +824,7 @@ export function AIMessages() {
                         <p className="text-sm text-muted-foreground mt-1">{message.originalPrompt}</p>
                       </div>
                       
-                      {expandedMessages.has(message.id) && (
+                      {expandedMessages.has(message._id) && (
                         <div>
                           <Label className="text-sm font-medium">Message Variants</Label>
                           <div className="mt-2 space-y-2">
@@ -876,7 +843,11 @@ export function AIMessages() {
                                       Spam: {variant.spamScore.toFixed(1)}
                                     </Badge>
                                   </div>
-                                  <Button variant="ghost" size="sm">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm"
+                                    onClick={() => copyToClipboard(variant.content)}
+                                  >
                                     <Copy className="h-3 w-3" />
                                   </Button>
                                 </div>
@@ -915,7 +886,7 @@ export function AIMessages() {
               </Card>
             ) : (
               templates.map((template) => (
-                <Card key={template.id} className="border-l-4 border-l-blue-500">
+                <Card key={template._id} className="border-l-4 border-l-blue-500">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <CardTitle className="flex items-center gap-2">
@@ -925,7 +896,7 @@ export function AIMessages() {
                         <Button variant="ghost" size="sm" onClick={() => loadTemplate(template)}>
                           <Edit3 className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => deleteMessage(template.id)}>
+                        <Button variant="ghost" size="sm" onClick={() => deleteMessage(template._id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -953,7 +924,11 @@ export function AIMessages() {
                                     {variant.characterCount} chars
                                   </Badge>
                                 </div>
-                                <Button variant="ghost" size="sm">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => copyToClipboard(variant.content)}
+                                >
                                   <Copy className="h-3 w-3" />
                                 </Button>
                               </div>

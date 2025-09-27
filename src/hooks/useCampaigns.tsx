@@ -1,116 +1,152 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { parse } from 'papaparse';
-import { Message } from 'node_modules/react-hook-form/dist/types';
-import { smsService, type SmsTask, type DeviceConfig } from '@/services/smsService';
+// import { campaignAPI, contactAPI, deviceAPI, messageAPI } from '@/utils/api';
 import { useAuthStore } from "@/store/useAuthStore";
+import { deviceAPI } from '@/lib/api';
+import { messageAPI, SavedMessage } from '@/lib/api/messages';
+import { v4 as uuidv4 } from 'uuid';
+import { campaignAPI } from '@/lib/api/campaign';
+import { contactAPI } from '@/lib/api/contacts';
+import { EjoinAPI } from '@/lib/api/ejoin';
+
 export interface Campaign {
+  _id: string;
   id: string;
   name: string;
   status: 'active' | 'paused' | 'completed' | 'scheduled';
-  total_contacts: number;
-  sent_messages: number;
-  delivered_messages: number;
-  failed_messages: number;
-  scheduled_date?: string;
-  created_at: string;
-  message_content: string;
-  message_preview?: string;
+  totalContacts: number;
+  sentMessages: number;
+  deliveredMessages: number;
+  failedMessages: number;
+  scheduledDate?: string;
+  createdAt: string;
+  updatedAt: string;
+  messageContent: string;
+  messagePreview?: string;
   priority: 'low' | 'normal' | 'high';
-  contact_list_id?: string;
-  device_id?: string; // Add device reference
-  task_settings?: { // Add task settings
+  contactList?: string;
+  device?: string;
+  taskSettings?: {
     interval: number;
     timeout: number;
     coding: number;
-    sms_type: number;
-    // Add other task settings as needed
+    smsType: number;
   };
+  user: string;
 }
 
 export interface SmsTask {
   tid: string;
   from?: string;
-  to: string; // Can be comma-separated numbers
+  to: string;
   sms: string;
   chs?: 'utf8' | 'base64';
   coding?: number;
-  smstype?: number;
-  intvl?: number;
-  tmo?: number;
+  smsType?: number;
+  interval?: number;
+  timeout?: number;
   sdr?: number;
   fdr?: number;
   dr?: number;
-  sr_prd?: number;
-  sr_cnt?: number;
+  srPeriod?: number;
+  srCount?: number;
 }
 
-// Add this interface
 export interface Device {
+  _id: string;
   id: string;
   name: string;
-  ip_address: string;
-  port: number;
-  status: 'online' | 'offline' | 'maintenance';
-  created_at: string;
-  updated_at: string;
+  ipAddress: string;
+  port: string;
+  status: 'online' | 'offline' | 'warning';
+  createdAt: string;
+  updatedAt: string;
   username: string;
   password: string;
-  user_id: string;
+  user: string;
+  totalSlots: number;
+  activeSlots: number;
+  dailySent: number;
+  dailyLimit: number;
+  temperature: number;
+  uptime: string;
+  lastSeen: string;
 }
 
-
 export interface Contact {
-  id: string;
-  contact_list_id: string;
-  phone_number: string;
-  first_name?: string;
-  last_name?: string;
-  opted_in: boolean;
-  created_at: string;
-  updated_at: string;
+  _id: string;
+  contactList: string;
+  phoneNumber: string;
+  firstName?: string;
+  lastName?: string;
+  optedIn: boolean;
+  createdAt: string;
+  updatedAt: string;
+  user: string;
 }
 
 export interface ContactList {
-  id: string;
+  _id: string;
   name: string;
-  total_contacts: number;
-  opted_in: number;
-  created_at: string;
-  updated_at: string;
+  totalContacts: number;
+  optedInCount: number;
+  optedOutCount: number;
+  createdAt: string;
+  updatedAt: string;
+  user: string;
 }
 
 export interface MessageTemplate {
-  id: string;
+  _id: string;
   name: string;
   content: string;
   category: string;
-  created_at: string;
-  updated_at: string;
+  createdAt: string;
+  updatedAt: string;
+  user: string;
+}
+
+export interface MessageVariant {
+  _id: string;
+  content: string;
+  tone: string;
+  language: string;
+  characterCount: number;
+  spamScore: number;
+  encoding: string;
+  cost: number;
+  createdAt: string;
+}
+
+export interface Message {
+  _id: string;
+  name: string;
+  category: string;
+  originalPrompt: string;
+  baseMessage: string;
+  variants: MessageVariant[];
+  settings: any;
+  createdAt: string;
+  updatedAt: string;
+  isTemplate: boolean;
+  user?: string;
 }
 
 export function useCampaigns() {
-  const { user } = useAuthStore();
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const { user, isAuthenticated } = useAuthStore();
+  const [campaigns, setCampaigns] = useState<any>([]);
   const [contactLists, setContactLists] = useState<ContactList[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [messageTemplates, setMessageTemplates] = useState<MessageTemplate[]>([]);
+  const [messages, setMessages] = useState<any>([]);
+  const [messageTemplates, setMessageTemplates] = useState<SavedMessage[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch available devices
   const fetchDevices = async (): Promise<Device[]> => {
-    if (!user) return [];
+    if (!isAuthenticated) return [];
     
     try {
-      const { data, error } = await supabase
-        .from('devices')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
+      const response = await deviceAPI.getAll();
+      return response.data.devices || [];
     } catch (error) {
       console.error('Error fetching devices:', error);
       toast.error('Failed to load devices');
@@ -121,65 +157,74 @@ export function useCampaigns() {
   // Send SMS campaign
   const sendCampaignSms = async (
     campaignId: string,
-    deviceConfig: DeviceConfig,
-    contactIds: string[]
+    deviceId: string,
+    contacts: any
   ) => {
-    if (!user) throw new Error('User not authenticated');
+    if (!isAuthenticated) throw new Error('User not authenticated');
   
     try {
-      console.log("sendCampaignSms", { campaignId, deviceConfig, contactIds });
+      console.log("sendCampaignSms", { campaignId, deviceId, contacts });
       
       // Fetch campaign details
-      const { data: campaign, error: campaignError } = await supabase
-        .from('campaigns')
-        .select('*')
-        .eq('id', campaignId)
-        .single();
+      const campaignResponse = await campaignAPI.getById(campaignId);
+      console.log("campaignResponse",campaignResponse)
+      const campaign = campaignResponse?.data?.campaign;
   
-      if (campaignError) throw campaignError;
+      if (!campaign) {
+        throw new Error('Campaign not found');
+      }
   
-      // Fetch contacts
-      const { data: contacts, error: contactsError } = await supabase
-        .from('contacts')
-        .select('*')
-        .in('id', contactIds)
-        .eq('opted_in', true);
+      // Fetch device details
+      const deviceResponse = await deviceAPI.getById(deviceId);
+      const device = deviceResponse.data.device;
   
-      if (contactsError) throw contactsError;
+      if (!device) {
+        throw new Error('Device not found');
+      }
+  
+
   
       if (contacts.length === 0) {
         throw new Error('No opted-in contacts found');
       }
   
-      // Create SMS tasks in new format
-      const tasks: SmsTask[] = [{
-        id: `${campaignId}-${Date.now()}`,
-        recipients: contacts.map(contact => contact.phone_number),
-        sms: campaign.message_content,
+      // Prepare SMS tasks
+      const tasks = [{
+        tid: Number(`${Date.now()}${Math.floor(Math.random() * 1000)}`),
+        scheduledDate : `${Date.now()}`,
+        to: contacts.map(contact => contact.phoneNumber).join(','),
+        sms: campaign.messageContent,
         chs: 'utf8' as const,
-        coding: campaign.task_settings?.coding || (campaign.message_content.length > 160 ? 1 : 0),
-        smstype: campaign.task_settings?.sms_type || 0,
-        intvl: campaign.task_settings?.interval || 10,
-        tmo: campaign.task_settings?.timeout || 30,
+        coding: campaign.taskSettings?.coding || (campaign.messageContent.length > 160 ? 1 : 0),
+        smsType: campaign.taskSettings?.smsType || 0,
+        interval: campaign.taskSettings?.interval || 10,
+        timeout: campaign.taskSettings?.timeout || 30,
+        "sdr": true,
+        "fdr": true,
+        "dr": true,
       }];
+      console.log("tasks",tasks)
+      // Send SMS via device using the goip_send_cmd endpoint
+      const ejoin_repsonses = await EjoinAPI.submitSmsTasks(tasks);
   
-      // Send SMS via device
-      const result = await smsService.sendSms(deviceConfig, tasks);
-  
-      if (result.code !== 200) {
-        throw new Error(`SMS sending failed: ${result.reason}`);
+      if (!ejoin_repsonses.success) {
+        throw new Error(`SMS sending failed: ${ejoin_repsonses.message}`);
       }
+
+  
+      // if (result.code !== 200) {
+      //   throw new Error(`SMS sending failed: ${result.reason}`);
+      // }
   
       // Update campaign statistics
-      const { error: updateError } = await supabase
-        .from('campaigns')
-        .update({
-          sent_messages: campaign.sent_messages + contacts.length,
-          status: 'active'
-        })
-        .eq('id', campaignId);
+      await campaignAPI.updateStats(campaignId, {
+        sentMessages: contacts.length
+      });
   
-      if (updateError) throw updateError;
+      // Update device daily sent count
+      await deviceAPI.updateStats(deviceId, {
+        dailySent: device.dailySent + contacts.length
+      });
   
       toast.success(`SMS sent successfully to ${contacts.length} contacts`);
       return result;
@@ -191,166 +236,110 @@ export function useCampaigns() {
   };
 
   // Start campaign (send to all contacts in the associated list)
-  const startCampaign = async (campaignId: string, deviceConfig: DeviceConfig) => {
-    if (!user) throw new Error('User not authenticated');
+  const startCampaign = async (campaignId: string, deviceId: string) => {
+    if (!isAuthenticated) throw new Error('User not authenticated');
   
     try {
-      console.log("send_command_here");
+      console.log("Starting campaign:", campaignId);
   
-      // 1) Load the campaign and (optionally) its list record
-      const { data: campaign, error: campaignError } = await supabase
-        .from('campaigns')
-        .select(`
-          id,
-          contact_list_id,
-          status,
-          contact_lists:contact_list_id (
-            id,
-            name
-          )
-        `)
-        .eq('id', campaignId)
-        .maybeSingle();
+      // 1) Load the campaign
+      const campaignResponse = await campaignAPI.getById(campaignId);
+      console.log("campaignResponse",campaignResponse)
+      const campaign = campaignResponse?.data?.campaign;
   
-      if (campaignError) throw campaignError;
       if (!campaign) throw new Error('Campaign not found');
-      if (!campaign.contact_list_id) {
+      if (!campaign.contactList) {
         throw new Error('Campaign does not have a contact list assigned');
       }
+      console.log("campaign",campaign)
   
       // 2) Fetch opted-in contacts for that list
-      const { data: contacts, error: contactsError } = await supabase
-        .from('contacts')
-        .select('id, phone_number, first_name, last_name')
-        .eq('contact_list_id', campaign.contact_list_id)
-        .eq('opted_in', true);
+      const contactsResponse = await contactAPI.getContacts(campaign.contactList?._id, {
+        status: 'active',
+        optedIn: true
+      });
+      console.log("contactsResponse",contactsResponse)
+      const contacts = contactsResponse.data.contacts || [];
   
-      if (contactsError) throw contactsError;
-      if (!contacts || contacts.length === 0) {
+      if (contacts.length === 0) {
         throw new Error('No opted-in contacts found in the selected list');
       }
   
       // 3) Send messages
       await sendCampaignSms(
         campaignId,
-        deviceConfig,
-        contacts.map((c) => c.id)
+        deviceId,
+        contacts
       );
   
       // 4) Update campaign status AFTER successful send
       await updateCampaignStatus(campaignId, 'active');
+      
+      return { success: true, message: `Campaign started successfully. Sent to ${contacts.length} contacts.` };
     } catch (error) {
       console.error('Error starting campaign:', error);
-      throw error;
-    }
-  };
-  
-
-  // Test campaign (send to a few contacts)
-  const testCampaign = async (campaignId: string, deviceConfig: DeviceConfig, testContactIds: string[]) => {
-    try {
-      await sendCampaignSms(campaignId, deviceConfig, testContactIds);
-      toast.success('Test campaign sent successfully');
-    } catch (error) {
-      console.error('Error testing campaign:', error);
       throw error;
     }
   };
 
   // Fetch campaigns
   const fetchCampaigns = async () => {
-    if (!user) return;
+    if (!isAuthenticated) return;
     
     try {
-      const { data, error } = await supabase
-        .from('campaigns')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setCampaigns((data || []) as Campaign[]);
+      const response = await campaignAPI.getAll();
+      console.log("fetchCampaigns_response",response)
+      setCampaigns(response.data?.campaigns || []);
     } catch (error) {
       console.error('Error fetching campaigns:', error);
       toast.error('Failed to load campaigns');
     }
   };
 
-  const getAllMessages = async () => {
-    const { data: messages, error: messagesError } = await (supabase as any)
-      .from('messages')
-      .select(`
-        *,
-        message_variants (*)
-      `)
-      .order('created_at', { ascending: false });
-
-    if (messagesError) throw messagesError;
-
-    setMessages(messages.map(message => ({
-      id: message.id,
-      name: message.name,
-      category: message.category,
-      originalPrompt: message.original_prompt,
-      baseMessage: message.base_message,
-      variants: message.message_variants.map((variant: any) => ({
-        id: variant.id,
-        content: variant.content,
-        tone: variant.tone,
-        language: variant.language,
-        characterCount: variant.character_count,
-        spamScore: variant.spam_score,
-        encoding: variant.encoding,
-        cost: variant.cost,
-        createdAt: variant.created_at,
-      })),
-      settings: message.settings,
-      createdAt: message.created_at,
-      updatedAt: message.updated_at,
-      isTemplate: message.is_template,
-    })));
-  }
-
-
-  // Fetch message templates
-  const fetchMessageTemplates = async () => {
-    if (!user) return;
+  // Fetch contact lists
+  const fetchContactLists = async () => {
+    if (!isAuthenticated) return;
     
     try {
-      const { data, error } = await supabase
-        .from('message_templates')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setMessageTemplates(data || []);
+      const response = await contactAPI.getLists();
+      setContactLists(response.data.contactLists || []);
     } catch (error) {
-      console.error('Error fetching message templates:', error);
-      toast.error('Failed to load message templates');
+      console.error('Error fetching contact lists:', error);
+    }
+  };
+
+  // Fetch messages and templates
+  const getAllMessages = async () => {
+    if (!isAuthenticated) return;
+    
+    try {
+      // Fetch regular messages
+      const messagesResponse = await messageAPI.getAll({ isTemplate: false });
+      console.log("messagesResponse",messagesResponse)
+      setMessages(messagesResponse?.data?.messages || []);
+      
+      // Fetch templates
+      // const templatesResponse = await messageAPI.getTemplates();
+      // setMessageTemplates(templatesResponse.templates || []);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
     }
   };
 
   // Create campaign
-  const createCampaign = async (campaignData: Omit<Campaign, 'id' | 'created_at'>) => {
-    if (!user) return;
+  const createCampaign = async (campaignData: any) => {
+    if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
-      const { data, error } = await supabase
-        .from('campaigns')
-        .insert([{
-          ...campaignData,
-          user_id: user.id,
-          message_preview: campaignData.message_content.substring(0, 50) + '...'
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
+      const response = await campaignAPI.create({
+        ...campaignData,
+        messagePreview: campaignData.messageContent.substring(0, 50) + '...'
+      });
       
-      setCampaigns(prev => [data as Campaign, ...prev]);
+      const newCampaign = response.campaign;
+      setCampaigns(prev => [newCampaign, ...prev]);
       toast.success('Campaign created successfully');
-      return data;
+      return newCampaign;
     } catch (error) {
       console.error('Error creating campaign:', error);
       toast.error('Failed to create campaign');
@@ -361,87 +350,92 @@ export function useCampaigns() {
   // Update campaign status
   const updateCampaignStatus = async (id: string, status: Campaign['status']) => {
     try {
-      const { error } = await supabase
-        .from('campaigns')
-        .update({ status })
-        .eq('id', id)
-        .eq('user_id', user?.id);
-
-      if (error) throw error;
+      await campaignAPI.updateStatus(id, status);
       
       setCampaigns(prev => 
         prev.map(campaign => 
-          campaign.id === id ? { ...campaign, status } : campaign
+          campaign._id === id ? { ...campaign, status } : campaign
         )
       );
       toast.success(`Campaign ${status}`);
     } catch (error) {
       console.error('Error updating campaign status:', error);
       toast.error('Failed to update campaign status');
-    }
-  };
-
-
-  // Create message template
-  const createMessageTemplate = async (templateData: Omit<MessageTemplate, 'id' | 'created_at' | 'updated_at'>) => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('message_templates')
-        .insert([{
-          ...templateData,
-          user_id: user.id
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-      
-      setMessageTemplates(prev => [data, ...prev]);
-      toast.success('Message template created successfully');
-      return data;
-    } catch (error) {
-      console.error('Error creating message template:', error);
-      toast.error('Failed to create message template');
       throw error;
     }
   };
 
-  // Delete message template
-  const deleteMessageTemplate = async (id: string) => {
+  // Update campaign
+  const updateCampaign = async (id: string, updates: Partial<Campaign>) => {
     try {
-      const { error } = await supabase
-        .from('message_templates')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', user?.id);
-
-      if (error) throw error;
+      const response = await campaignAPI.update(id, updates);
+      const updatedCampaign = response.campaign;
       
-      setMessageTemplates(prev => prev.filter(template => template.id !== id));
-      toast.success('Message template deleted');
+      setCampaigns(prev => 
+        prev.map(campaign => 
+          campaign._id === id ? { ...campaign, ...updatedCampaign } : campaign
+        )
+      );
+      toast.success('Campaign updated successfully');
+      return updatedCampaign;
     } catch (error) {
-      console.error('Error deleting message template:', error);
-      toast.error('Failed to delete message template');
+      console.error('Error updating campaign:', error);
+      toast.error('Failed to update campaign');
+      throw error;
+    }
+  };
+
+  // Delete campaign
+  const deleteCampaign = async (id: string) => {
+    try {
+      await campaignAPI.delete(id);
+      
+      setCampaigns(prev => prev.filter(campaign => campaign._id !== id));
+      toast.success('Campaign deleted successfully');
+    } catch (error) {
+      console.error('Error deleting campaign:', error);
+      toast.error('Failed to delete campaign');
+      throw error;
+    }
+  };
+
+  // Fetch campaign analytics
+  const getCampaignAnalytics = async (campaignId: string) => {
+    try {
+      const campaignResponse = await campaignAPI.getById(campaignId);
+      const campaign = campaignResponse.campaign;
+      
+      return {
+        totalContacts: campaign.totalContacts,
+        sentMessages: campaign.sentMessages,
+        deliveredMessages: campaign.deliveredMessages,
+        failedMessages: campaign.failedMessages,
+        successRate: campaign.totalContacts > 0 ? 
+          (campaign.deliveredMessages / campaign.totalContacts) * 100 : 0
+      };
+    } catch (error) {
+      console.error('Error fetching campaign analytics:', error);
+      throw error;
     }
   };
 
   useEffect(() => {
-    if (user) {
+    if (isAuthenticated) {
       const loadData = async () => {
         setLoading(true);
         await Promise.all([
           fetchCampaigns(),
-          fetchMessageTemplates(),
+          fetchContactLists(),
           getAllMessages()
         ]);
         setLoading(false);
       };
       
       loadData();
+    } else {
+      setLoading(false);
     }
-  }, [user]);
+  }, [isAuthenticated]);
 
   return {
     campaigns,
@@ -450,14 +444,13 @@ export function useCampaigns() {
     messageTemplates,
     loading,
     createCampaign,
+    updateCampaign,
     updateCampaignStatus,
-    createMessageTemplate,
-    deleteMessageTemplate,
+    deleteCampaign,
     fetchCampaigns,
-    fetchMessageTemplates,
     fetchDevices,
     sendCampaignSms,
     startCampaign,
-    testCampaign,
+    getCampaignAnalytics,
   };
 }

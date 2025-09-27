@@ -1,303 +1,274 @@
-// hooks/useContactManagement.ts
 import { useState, useCallback, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from 'sonner';
 import { parse } from 'papaparse';
+import { contactAPI } from '../lib/api/contacts';
 
 export interface Contact {
-  id: string;
-  contact_list_id: string;
-  phone_number: string;
-  country_code: string;
-  first_name?: string;
-  last_name?: string;
+  _id: string;
+  contactList: string;
+  phoneNumber: string;
+  countryCode: string;
+  firstName?: string;
+  lastName?: string;
   email?: string;
   company?: string;
-  opted_in: boolean;
+  tags: string[];
+  customFields: Record<string, any>;
+  optedIn: boolean;
   status: 'active' | 'inactive' | 'bounced';
   source: string;
-  created_at: string;
-  updated_at: string;
+  importBatchId?: string;
+  createdAt: string;
+  updatedAt: string;
+  user: string;
 }
 
 export interface ContactList {
-  id: string;
-  user_id: string;
+  _id: string;
   name: string;
   description?: string;
-  total_contacts: number;
-  opted_in_count: number;
-  opted_out_count: number;
-  created_at: string;
-  updated_at: string;
+  totalContacts: number;
+  optedInCount: number;
+  optedOutCount: number;
+  createdAt: string;
+  updatedAt: string;
+  user: string;
 }
 
 export interface ContactImportResult {
   success: number;
   failed: number;
-  errors: string[];
+  errors: Array<{
+    index: number;
+    error: string;
+    data: any;
+  }>;
 }
 
 export interface ContactFilters {
-  opted_in?: boolean;
+  optedIn?: boolean;
   status?: string;
   search?: string;
+  page?: number;
+  limit?: number;
 }
 
 export function useContactManagement() {
-  const { user } = useAuthStore();
+  const { user, isAuthenticated } = useAuthStore();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactLists, setContactLists] = useState<ContactList[]>([]);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    total: 0,
+    limit: 50
+  });
 
   // Fetch contact lists with proper error handling
   const fetchContactLists = useCallback(async (): Promise<ContactList[]> => {
-    if (!user) throw new Error('User not authenticated');
+    if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
-      const { data, error } = await supabase
-        .from('contact_lists')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      
-      const lists = data || [];
+      const response = await contactAPI.getLists();
+      const lists = response.data.contactLists || [];
       setContactLists(lists);
       return lists;
     } catch (error) {
       console.error('Error fetching contact lists:', error);
+      toast.error('Failed to load contact lists');
       throw new Error('Failed to load contact lists');
     }
-  }, [user]);
+  }, [isAuthenticated]);
 
   // Fetch contacts with filtering and pagination
   const fetchContacts = useCallback(async (
     contactListId: string, 
-    filters: ContactFilters = {},
-    page = 1,
-    pageSize = 50
+    filters: ContactFilters = {}
   ): Promise<Contact[]> => {
-    if (!user) throw new Error('User not authenticated');
+    if (!isAuthenticated) throw new Error('User not authenticated');
     if (!contactListId) throw new Error('Contact list ID is required');
 
     try {
       setLoading(true);
       
-      let query = supabase
-        .from('contacts')
-        .select('*')
-        .eq('contact_list_id', contactListId)
-        .order('created_at', { ascending: false })
-        .range((page - 1) * pageSize, page * pageSize - 1);
+      const params: any = {
+        page: filters.page || 1,
+        limit: filters.limit || 50
+      };
 
-      // Apply filters
-      if (filters.opted_in !== undefined) {
-        query = query.eq('opted_in', filters.opted_in);
+      if (filters.optedIn !== undefined) {
+        params.optedIn = filters.optedIn;
       }
       
       if (filters.status) {
-        query = query.eq('status', filters.status);
+        params.status = filters.status;
       }
       
       if (filters.search) {
-        query = query.or(`phone_number.ilike.%${filters.search}%,first_name.ilike.%${filters.search}%,last_name.ilike.%${filters.search}%`);
+        params.search = filters.search;
       }
 
-      const { data, error } = await query;
-
-      if (error) throw error;
+      const response = await contactAPI.getContacts(contactListId, params);
+      const contactsData = response.data.contacts || [];
       
-      const contactsData = data || [];
       setContacts(contactsData);
+      setPagination({
+        currentPage: response.data.currentPage || 1,
+        totalPages: response.data.totalPages || 1,
+        total: response.data.total || 0,
+        limit: response.data.limit || 50
+      });
+      
       return contactsData;
     } catch (error) {
       console.error('Error fetching contacts:', error);
+      toast.error('Failed to load contacts');
       throw new Error('Failed to load contacts');
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [isAuthenticated]);
 
   // Create new contact list
   const createContactList = useCallback(async (name: string, description?: string): Promise<ContactList> => {
-    if (!user) throw new Error('User not authenticated');
+    if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
-      const { data, error } = await supabase
-        .from('contact_lists')
-        .insert([{
-          name,
-          description,
-          user_id: user.id,
-          total_contacts: 0,
-          opted_in_count: 0,
-          opted_out_count: 0
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
+      const response = await contactAPI.createList({
+        name,
+        description
+      });
       
-      setContactLists(prev => [data, ...prev]);
-      return data;
+      const newList = response.data.contactList;
+      setContactLists(prev => [newList, ...prev]);
+      toast.success('Contact list created successfully');
+      return newList;
     } catch (error) {
       console.error('Error creating contact list:', error);
+      toast.error('Failed to create contact list');
       throw new Error('Failed to create contact list');
     }
-  }, [user]);
+  }, [isAuthenticated]);
+
+  // Update contact list
+  const updateContactList = useCallback(async (id: string, updates: Partial<ContactList>): Promise<ContactList> => {
+    if (!isAuthenticated) throw new Error('User not authenticated');
+
+    try {
+      const response = await contactAPI.updateList(id, updates);
+      const updatedList = response.data.contactList;
+      
+      setContactLists(prev => prev.map(list => 
+        list._id === id ? { ...list, ...updatedList } : list
+      ));
+      toast.success('Contact list updated successfully');
+      return updatedList;
+    } catch (error) {
+      console.error('Error updating contact list:', error);
+      toast.error('Failed to update contact list');
+      throw new Error('Failed to update contact list');
+    }
+  }, [isAuthenticated]);
 
   // Delete contact list
   const deleteContactList = useCallback(async (id: string): Promise<void> => {
-    if (!user) throw new Error('User not authenticated');
+    if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
-      const { error } = await supabase
-        .from('contact_lists')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', user.id);
-
-      if (error) throw error;
-      
-      setContactLists(prev => prev.filter(list => list.id !== id));
+      await contactAPI.deleteList(id);
+      setContactLists(prev => prev.filter(list => list._id !== id));
+      toast.success('Contact list deleted successfully');
     } catch (error) {
       console.error('Error deleting contact list:', error);
+      toast.error('Failed to delete contact list');
       throw new Error('Failed to delete contact list');
     }
-  }, [user]);
+  }, [isAuthenticated]);
 
   // Add single contact
   const addContact = useCallback(async (
     contactListId: string, 
     contactData: any
   ): Promise<Contact> => {
-    if (!user) throw new Error('User not authenticated');
+    if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
+      console.log("contactData",contactData)
       // Validate phone number
-      const cleanPhone = contactData.phone_number.replace(/\D/g, '');
-      if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+      const cleanPhone = contactData?.phoneNumber?.replace(/\D/g, '');
+      if (cleanPhone.length < 10 || cleanPhone?.length > 15) {
         throw new Error('Phone number must be 10-15 digits');
       }
 
-      const { data, error } = await supabase
-        .from('contacts')
-        .insert([{
-          ...contactData,
-          phone_number: cleanPhone,
-          contact_list_id: contactListId,
-          user_id: user.id,
-          status: 'active',
-          source: 'manual'
-        }])
-        .select()
-        .single();
-
-      if (error) {
-        if (error.code === '23505') { // Unique violation
-          throw new Error('Contact with this phone number already exists in the list');
-        }
-        throw error;
-      }
+      const response = await contactAPI.createContact(contactListId, {
+        ...contactData,
+        phoneNumber: cleanPhone,
+        status: 'active',
+        source: 'manual'
+      });
       
-      setContacts(prev => [data, ...prev]);
-      return data;
-    } catch (error) {
+      const newContact = response.data.contact;
+      setContacts(prev => [newContact, ...prev]);
+      toast.success('Contact added successfully');
+      return newContact;
+    } catch (error: any) {
       console.error('Error adding contact:', error);
+      if (error.message?.includes('duplicate') || error.message?.includes('already exists')) {
+        toast.error('Contact with this phone number already exists in the list');
+        throw new Error('Contact with this phone number already exists in the list');
+      }
+      toast.error('Failed to add contact');
       throw error;
     }
-  }, [user]);
-
-  // Add multiple contacts
-  const addContacts = useCallback(async (
-    contactListId: string, 
-    contactsData: Omit<Contact, 'id' | 'contact_list_id' | 'user_id' | 'created_at' | 'updated_at'>[]
-  ): Promise<void> => {
-    if (!user) throw new Error('User not authenticated');
-
-    try {
-      const contactsToInsert = contactsData.map(contact => ({
-        ...contact,
-        phone_number: contact.phone_number.replace(/\D/g, ''),
-        contact_list_id: contactListId,
-        user_id: user.id,
-        status: 'active',
-        source: 'bulk_import'
-      }));
-
-      const { error } = await supabase
-        .from('contacts')
-        .insert(contactsToInsert);
-
-      if (error) throw error;
-      
-      // Refresh contacts
-      await fetchContacts(contactListId);
-    } catch (error) {
-      console.error('Error adding contacts:', error);
-      throw new Error('Failed to add contacts');
-    }
-  }, [user, fetchContacts]);
+  }, [isAuthenticated]);
 
   // Update contact
   const updateContact = useCallback(async (
     contactId: string, 
     updates: Partial<Contact>
   ): Promise<Contact> => {
-    if (!user) throw new Error('User not authenticated');
+    if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
-      const { data, error } = await supabase
-        .from('contacts')
-        .update(updates)
-        .eq('id', contactId)
-        .eq('user_id', user.id)
-        .select()
-        .single();
-
-      if (error) throw error;
+      const response = await contactAPI.updateContact(contactId, updates);
+      const updatedContact = response.data.contact;
       
       setContacts(prev => prev.map(contact => 
-        contact.id === contactId ? { ...contact, ...data } : contact
-    ));
-      
-      return data;
+        contact._id === contactId ? { ...contact, ...updatedContact } : contact
+      ));
+      toast.success('Contact updated successfully');
+      return updatedContact;
     } catch (error) {
       console.error('Error updating contact:', error);
+      toast.error('Failed to update contact');
       throw new Error('Failed to update contact');
     }
-  }, [user]);
+  }, [isAuthenticated]);
 
   // Delete contact
   const deleteContact = useCallback(async (contactId: string): Promise<void> => {
-    if (!user) throw new Error('User not authenticated');
+    if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
-      const { error } = await supabase
-        .from('contacts')
-        .delete()
-        .eq('id', contactId)
-        .eq('user_id', user.id);
-
-      if (error) throw error;
-      
-      setContacts(prev => prev.filter(contact => contact.id !== contactId));
+      await contactAPI.deleteContact(contactId);
+      setContacts(prev => prev.filter(contact => contact._id !== contactId));
+      toast.success('Contact deleted successfully');
     } catch (error) {
       console.error('Error deleting contact:', error);
+      toast.error('Failed to delete contact');
       throw new Error('Failed to delete contact');
     }
-  }, [user]);
+  }, [isAuthenticated]);
 
-  // Import contacts from file
+  // Bulk import contacts
   const importContactsFromFile = useCallback(async (
     contactListId: string, 
     file: File
   ): Promise<ContactImportResult> => {
-    if (!user) throw new Error('User not authenticated');
+    if (!isAuthenticated) throw new Error('User not authenticated');
 
     return new Promise((resolve, reject) => {
       setImporting(true);
@@ -307,54 +278,87 @@ export function useContactManagement() {
         skipEmptyLines: true,
         complete: async (results) => {
           try {
-            const validContacts: any[] = [];
-            const errors: string[] = [];
-            let successCount = 0;
-            let failedCount = 0;
+            const contactsToImport: any[] = [];
+            const errors: Array<{ index: number; error: string; data: any }> = [];
 
             for (const [index, row] of results.data.entries()) {
               try {
-                const phoneNumber = (row.phone || row.phone_number || row.number || '').toString().replace(/\D/g, '');
+                const phoneNumber = (row.phone || row.phone_number || row.number || row.Phone || '').toString().replace(/\D/g, '');
                 
                 if (!phoneNumber) {
-                  errors.push(`Row ${index + 2}: Phone number is required`);
-                  failedCount++;
+                  errors.push({
+                    index: index + 2,
+                    error: 'Phone number is required',
+                    data: row
+                  });
                   continue;
                 }
 
                 if (phoneNumber.length < 10 || phoneNumber.length > 15) {
-                  errors.push(`Row ${index + 2}: Invalid phone number length`);
-                  failedCount++;
+                  errors.push({
+                    index: index + 2,
+                    error: 'Invalid phone number length',
+                    data: row
+                  });
                   continue;
                 }
 
-                validContacts.push({
-                  phone_number: phoneNumber,
-                  country_code: row.country_code || '+1',
-                  first_name: row.first_name || row.firstname || row.fname || '',
-                  last_name: row.last_name || row.lastname || row.lname || '',
-                  email: row.email || '',
-                  //company: row.company || '',
-                  opted_in: !(row.opted_in === 'false' || row.opt_in === 'false' || row.opted_in === false),
+                contactsToImport.push({
+                  phoneNumber: phoneNumber,
+                  countryCode: row.country_code || row.countryCode || '+1',
+                  firstName: row.first_name || row.firstName || row.firstname || row['First Name'] || '',
+                  lastName: row.last_name || row.lastName || row.lastname || row['Last Name'] || '',
+                  email: row.email || row.Email || '',
+                  company: row.company || row.Company || '',
+                  optedIn: !(row.opted_in === 'false' || row.opt_in === 'false' || row.optedIn === 'false' || row.opted_in === false),
+                  tags: row.tags ? row.tags.split(',').map((tag: string) => tag.trim()) : [],
+                  customFields: row.custom_fields ? JSON.parse(row.custom_fields) : {},
                   source: 'file_import'
                 });
-                
-                successCount++;
               } catch (error) {
-                errors.push(`Row ${index + 2}: Invalid data format`);
-                failedCount++;
+                errors.push({
+                  index: index + 2,
+                  error: 'Invalid data format',
+                  data: row
+                });
               }
             }
 
-            if (validContacts.length > 0) {
-              await addContacts(contactListId, validContacts);
+            let importResult: ContactImportResult = {
+              success: 0,
+              failed: errors.length,
+              errors: errors
+            };
+
+            if (contactsToImport.length > 0) {
+              try {
+                const response = await contactAPI.importContacts(contactListId, contactsToImport);
+                importResult = {
+                  success: response.data.imported || contactsToImport.length,
+                  failed: response.data.failed || errors.length,
+                  errors: [...errors, ...(response.data.errors || [])]
+                };
+              } catch (importError) {
+                importResult.failed += contactsToImport.length;
+                errors.push({
+                  index: 0,
+                  error: 'Bulk import failed',
+                  data: null
+                });
+              }
             }
 
-            resolve({
-              success: successCount,
-              failed: failedCount,
-              errors
-            });
+            // Refresh contacts if any were successfully imported
+            if (importResult.success > 0) {
+              await fetchContacts(contactListId);
+            }
+
+            toast.success(`Imported ${importResult.success} contacts successfully`);
+            if (importResult.failed > 0) {
+              toast.error(`${importResult.failed} contacts failed to import`);
+            }
+
+            resolve(importResult);
           } catch (error) {
             reject(error);
           } finally {
@@ -363,48 +367,110 @@ export function useContactManagement() {
         },
         error: (error) => {
           setImporting(false);
+          toast.error('Failed to parse CSV file');
           reject(error);
         }
       });
     });
-  }, [user, addContacts]);
+  }, [isAuthenticated, fetchContacts]);
 
   // Export contacts to CSV
   const exportContacts = useCallback(async (contactListId: string, filters: ContactFilters = {}): Promise<string> => {
-    const contacts = await fetchContacts(contactListId, filters, 1, 10000); // Get all contacts
-    
-    const headers = ['Phone Number', 'Country Code', 'First Name', 'Last Name', 'Email', 'Opted In', 'Status'];
-    const csvRows = contacts.map(contact => [
-      contact.phone_number,
-      contact.country_code,
-      contact.first_name || '',
-      contact.last_name || '',
-      contact.email || '',
-      //contact.company || '',
-      contact.opted_in ? 'Yes' : 'No',
-      contact.status
-    ]);
+    if (!isAuthenticated) throw new Error('User not authenticated');
 
-    const csvContent = [headers, ...csvRows]
-      .map(row => row.map(field => `"${field}"`).join(','))
-      .join('\n');
+    try {
+      // Get all contacts by setting a high limit
+      const response = await contactAPI.getContacts(contactListId, {
+        ...filters,
+        limit: 10000, // High limit to get all contacts
+        page: 1
+      });
+      
+      const contacts = response.data.contacts || [];
+      
+      const headers = ['Phone Number', 'Country Code', 'First Name', 'Last Name', 'Email', 'Company', 'Opted In', 'Status', 'Source'];
+      const csvRows = contacts.map(contact => [
+        contact.phoneNumber,
+        contact.countryCode,
+        contact.firstName || '',
+        contact.lastName || '',
+        contact.email || '',
+        contact.company || '',
+        contact.optedIn ? 'Yes' : 'No',
+        contact.status,
+        contact.source
+      ]);
 
-    return csvContent;
-  }, [fetchContacts]);
+      const csvContent = [headers, ...csvRows]
+        .map(row => row.map(field => `"${field?.toString().replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+
+      return csvContent;
+    } catch (error) {
+      console.error('Error exporting contacts:', error);
+      throw new Error('Failed to export contacts');
+    }
+  }, [isAuthenticated]);
+
+  // Toggle contact opted-in status
+  const toggleContactOptIn = useCallback(async (contactId: string, optedIn: boolean): Promise<Contact> => {
+    return updateContact(contactId, { optedIn });
+  }, [updateContact]);
+
+  // Get contact list statistics
+  const getContactListStats = useCallback(async (contactListId: string) => {
+    if (!isAuthenticated) throw new Error('User not authenticated');
+
+    try {
+      const response = await contactAPI.getListById(contactListId);
+      const list = response.data.contactList;
+      
+      return {
+        totalContacts: list.totalContacts,
+        optedInCount: list.optedInCount,
+        optedOutCount: list.optedOutCount,
+        activeCount: list.totalContacts - list.optedOutCount
+      };
+    } catch (error) {
+      console.error('Error fetching contact list stats:', error);
+      throw error;
+    }
+  }, [isAuthenticated]);
+
+  // Search contacts across all lists
+  const searchContacts = useCallback(async (query: string, filters: ContactFilters = {}) => {
+    if (!isAuthenticated) throw new Error('User not authenticated');
+
+    try {
+      // This would need a dedicated search endpoint in your backend
+      // For now, we'll search in the first list or implement client-side search
+      if (contactLists.length > 0) {
+        return await fetchContacts(contactLists[0]._id, {
+          ...filters,
+          search: query
+        });
+      }
+      return [];
+    } catch (error) {
+      console.error('Error searching contacts:', error);
+      throw error;
+    }
+  }, [isAuthenticated, contactLists, fetchContacts]);
 
   useEffect(() => {
-    if (user) {
+    if (isAuthenticated) {
       const loadData = async () => {
         setLoading(true);
-        await Promise.all([
-          fetchContactLists(),
-        ]);
+        await fetchContactLists();
         setLoading(false);
       };
       
       loadData();
+    } else {
+      setContacts([]);
+      setContactLists([]);
     }
-  }, [user]);
+  }, [isAuthenticated, fetchContactLists]);
 
   return {
     // State
@@ -412,17 +478,21 @@ export function useContactManagement() {
     contactLists,
     loading,
     importing,
+    pagination,
     
     // Methods
     fetchContactLists,
     fetchContacts,
     createContactList,
+    updateContactList,
     deleteContactList,
     addContact,
-    addContacts,
     updateContact,
     deleteContact,
     importContactsFromFile,
-    exportContacts
+    exportContacts,
+    toggleContactOptIn,
+    getContactListStats,
+    searchContacts
   };
 }

@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase"; // Import your Supabase client
-import { EjoinAPIService } from "./utils";
+import { EjoinAPIService } from "../../lib/api/devices";
 
 interface Device {
   id: string;
@@ -49,8 +49,8 @@ interface Device {
   username: string;
   password: string;
   status: "online" | "offline" | "warning";
-  total_slots: number;
-  active_slots: number;
+  totalSlots: number;
+  activeSlots: number;
   location: string;
   last_seen: string;
   daily_usage: { sent: number; limit: number };
@@ -401,9 +401,9 @@ export function DeviceManagement() {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>Active SIMs</span>
-                  <span>{device.active_slots}/{device.total_slots}</span>
+                  <span>{device.activeSlots}/{device.totalSlots}</span>
                 </div>
-                <Progress value={device.total_slots > 0 ? (device.active_slots / device.total_slots) * 100 : 0} />
+                <Progress value={device.totalSlots > 0 ? (device.activeSlots / device.totalSlots) * 100 : 0} />
               </div>
 
               <div className="flex gap-2">

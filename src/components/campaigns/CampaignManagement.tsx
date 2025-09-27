@@ -52,7 +52,8 @@ import { Device, useCampaigns, type Campaign } from "@/hooks/useCampaigns";
 import { toast } from "sonner";
 import { ContactManager } from "./ContactManager";
 import { useContactManagement } from "@/hooks/useContactManagement";
-import { supabase } from "@/lib/supabase";
+import { messageAPI, MessageVariant } from "@/lib/api/messages";
+import { contactAPI } from "@/lib/api/contacts";
 
 // Canadian SMS rules template
 const CANADIAN_SMS_TEMPLATE = `Your message here. Reply STOP to unsubscribe.`;
@@ -66,7 +67,6 @@ export function CampaignManagement() {
     messages,
     fetchDevices,
     startCampaign,
-    testCampaign,
   } = useCampaigns();
   
   const {
@@ -74,7 +74,8 @@ export function CampaignManagement() {
     createContactList,
     deleteContactList,
   } = useContactManagement();
-
+  //useMessage
+  console.log("campaigns",campaigns)
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [selectedContactListId, setSelectedContactListId] = useState<string | null>(null);
   const [isCreateCampaignOpen, setIsCreateCampaignOpen] = useState(false);
@@ -84,7 +85,12 @@ export function CampaignManagement() {
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [showSendDialog, setShowSendDialog] = useState(false);
-  const [selectedMessageVariant, setSelectedMessageVariant] = useState<string>('');
+  
+  // Message variant state
+  const [selectedMessageId, setSelectedMessageId] = useState<string>('');
+  const [messageVariants, setMessageVariants] = useState<MessageVariant[]>([]);
+  const [selectedVariantId, setSelectedVariantId] = useState<string>('');
+  const [loadingVariants, setLoadingVariants] = useState(false);
 
   // Task settings state
   const [taskSettings, setTaskSettings] = useState({
@@ -98,10 +104,10 @@ export function CampaignManagement() {
   const [campaignForm, setCampaignForm] = useState({
     name: '',
     message_content: CANADIAN_SMS_TEMPLATE,
-    contact_list_id: '',
+    contactList: '',
     priority: 'normal' as 'low' | 'normal' | 'high',
     status: 'scheduled' as Campaign['status'],
-    device_id: '',
+    device: '',
   });
 
   // Load devices on component mount
@@ -111,8 +117,8 @@ export function CampaignManagement() {
         const deviceList = await fetchDevices();
         setDevices(deviceList);
         // Auto-select first device if available
-        if (deviceList.length > 0 && !campaignForm.device_id) {
-          setCampaignForm(prev => ({ ...prev, device_id: deviceList[0].id }));
+        if (deviceList.length > 0 && !campaignForm.device) {
+          setCampaignForm(prev => ({ ...prev, device: deviceList[0].id }));
         }
       } catch (error) {
         console.error('Error loading devices:', error);
@@ -122,49 +128,88 @@ export function CampaignManagement() {
     loadDevices();
   }, []);
 
-  // Handle AI message variant selection
-  const handleMessageVariantSelect = (variantId: string) => {
-    if (variantId === 'none') {
+  // Fetch message variants when a message is selected
+  const fetchMessageVariants = async (messageId: string) => {
+    if (!messageId) {
+      setMessageVariants([]);
+      setSelectedVariantId('');
+      return;
+    }
+
+    setLoadingVariants(true);
+    try {
+      // You'll need to implement this API endpoint
+      const response = await messageAPI.getVariants(messageId);
+      console.log("MessageVariants_response",response)
+      const variants = response.data.variants || [];
+
+      setMessageVariants(variants);
+      
+      // Auto-select first variant if available
+      if (variants.length > 0) {
+        setSelectedVariantId(variants[0]._id);
+        setCampaignForm(prev => ({
+          ...prev,
+          message_content: variants[0].content
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching message variants:', error);
+      toast.error('Failed to load message variants');
+      setMessageVariants([]);
+    } finally {
+      setLoadingVariants(false);
+    }
+  };
+
+  // Handle message selection
+  const handleMessageSelect = (messageId: string) => {
+    if (messageId === 'none') {
+      setSelectedMessageId('');
+      setMessageVariants([]);
+      setSelectedVariantId('');
       setCampaignForm(prev => ({ 
         ...prev, 
         message_content: CANADIAN_SMS_TEMPLATE 
       }));
-      setSelectedMessageVariant('');
       return;
     }
 
-    // Find the selected variant from messages
-    const selectedVariant = messages.flatMap((message: any) => 
-      message.variants || []
-    ).find((variant: any) => variant.id === variantId);
+    setSelectedMessageId(messageId);
+    fetchMessageVariants(messageId);
+  };
 
+  // Handle variant selection
+  const handleVariantSelect = (variantId: string) => {
+    setSelectedVariantId(variantId);
+    
+    const selectedVariant = messageVariants.find(v => v._id === variantId);
     if (selectedVariant) {
-      setCampaignForm(prev => ({ 
-        ...prev, 
-        message_content: selectedVariant.content 
+      setCampaignForm(prev => ({
+        ...prev,
+        message_content: selectedVariant.content
       }));
-      setSelectedMessageVariant(variantId);
     }
   };
 
   // Start campaign handler
   const handleStartCampaign = async (campaign: Campaign) => {
-
     setIsSending(true);
     try {
       console.log("campaign",campaign)
-      const the_device = devices?.find(d => d.id === campaign.device_id);
+      console.log("the_device",devices)
+      const the_device = devices?.find(d => d._id === campaign.device?._id);
       console.log("the_device",the_device)
       const deviceConfig = {
-        device_ip: the_device?.ip_address,
+        device_ip: the_device?.ipAddress,
         device_port: the_device?.port,
         version: '1.1',
-        device_id: the_device?.id,
+        device: the_device?._id,
         username: the_device?.username,
         password: the_device?.password
       };
 
-      await startCampaign(campaign.id, deviceConfig);
+      await startCampaign(campaign._id, deviceConfig.device);
       setShowSendDialog(false);
     } catch (error) {
       console.error('Error starting campaign:', error);
@@ -173,59 +218,29 @@ export function CampaignManagement() {
     }
   };
 
-  // Test campaign handler
-  const handleTestCampaign = async (campaign: Campaign) => {
-    if (!selectedDevice) {
-      toast.error('Please select a device first');
-      return;
-    }
-
-    const testContactIds = ['test-contact-1', 'test-contact-2'];
-    
-    setIsSending(true);
-    try {
-      const deviceConfig = {
-        device_ip: selectedDevice.ip_address,
-        device_port: selectedDevice.port,
-        version: '1.1',
-        device_id: selectedDevice.id,
-        username: selectedDevice.username,
-        password: selectedDevice.password
-      };
-
-      await testCampaign(campaign.id, deviceConfig, testContactIds);
-    } catch (error) {
-      console.error('Error testing campaign:', error);
-    } finally {
-      setIsSending(false);
-    }
-  };
-
+  
   // Create campaign handler
   const handleCreateCampaign = async () => {
-    if (!campaignForm.name || !campaignForm.message_content || !campaignForm.device_id) {
+    if (!campaignForm.name || !campaignForm.message_content || !campaignForm.device) {
       toast.error('Please fill in all required fields including device selection');
       return;
     }
    
-    const { data : contacts_lists , error: contactsError } = await supabase
-        .from('contact_lists')
-        .select('total_contacts')
-        .eq('id', campaignForm.contact_list_id)
-    console.log("contacts_lists",campaignForm.contact_list_id,contacts_lists)
+    const { data : contacts_lists , error: contactsError } = await contactAPI.getListById(campaignForm.contactList)
+    console.log("contacts_lists",campaignForm.contactList,contacts_lists)
     try {
       await createCampaign({
         name: campaignForm.name,
-        message_content: campaignForm.message_content,
-        contact_list_id: campaignForm.contact_list_id || undefined,
+        messageContent: campaignForm.message_content,
+        contactList: campaignForm.contactList || undefined,
         priority: campaignForm.priority,
         status: campaignForm.status,
-        device_id: campaignForm.device_id,
-        task_settings: taskSettings,
-        total_contacts: contacts_lists?.[0]?.total_contacts || 0,
-        sent_messages: 0,
-        delivered_messages: 0,
-        failed_messages: 0
+        device: campaignForm.device,
+        taskSettings: taskSettings,
+        totalContacts: contacts_lists?.[0]?.totalContacts || 0,
+        sentMessages: 0,
+        deliveredMessages: 0,
+        failedMessages: 0
       });
       
       setIsCreateCampaignOpen(false);
@@ -233,10 +248,10 @@ export function CampaignManagement() {
       setCampaignForm({
         name: '',
         message_content: CANADIAN_SMS_TEMPLATE,
-        contact_list_id: '',
+        contactList: '',
         priority: 'normal',
         status: 'scheduled',
-        device_id: devices.length > 0 ? devices[0].id : ''
+        device: devices.length > 0 ? devices[0].id : ''
       });
       setTaskSettings({
         interval: 10,
@@ -244,7 +259,9 @@ export function CampaignManagement() {
         coding: 0,
         sms_type: 0
       });
-      setSelectedMessageVariant('');
+      setSelectedMessageId('');
+      setSelectedVariantId('');
+      setMessageVariants([]);
       toast.success('Campaign created successfully');
     } catch (error) {
       console.error('Error creating campaign:', error);
@@ -260,7 +277,7 @@ export function CampaignManagement() {
     }
 
     try {
-      await createContactList(contactListName);
+      await contactAPI.createList({ name: contactListName });
       setIsCreateContactListOpen(false);
       setContactListName('');
     } catch (error) {
@@ -286,14 +303,14 @@ export function CampaignManagement() {
 
   // Delivery rate calculator
   const getDeliveryRate = (campaign: Campaign) => {
-    if (campaign.sent_messages === 0) return 0;
-    return (campaign.delivered_messages / campaign.sent_messages) * 100;
+    if (campaign?.sentMessages === 0) return 0;
+    return (campaign?.deliveredMessages / campaign?.sentMessages) * 100;
   };
 
   // Campaign actions renderer
   const renderCampaignActions = (campaign: Campaign) => (
     <div className="flex gap-1">
-      {campaign.status === "scheduled" && (
+      {campaign?.status === "scheduled" && (
         <Button 
           variant="ghost" 
           size="sm"
@@ -306,7 +323,7 @@ export function CampaignManagement() {
           <Send className="h-3 w-3" />
         </Button>
       )}
-      {campaign.status === "active" && (
+      {campaign?.status === "active" && (
         <Button 
           variant="ghost" 
           size="sm"
@@ -315,7 +332,7 @@ export function CampaignManagement() {
           <Pause className="h-3 w-3" />
         </Button>
       )}
-      {campaign.status === "paused" && (
+      {campaign?.status === "paused" && (
         <Button 
           variant="ghost" 
           size="sm"
@@ -417,16 +434,16 @@ export function CampaignManagement() {
                   <div>
                     <Label htmlFor="device">Device *</Label>
                     <Select 
-                      value={campaignForm.device_id}
-                      onValueChange={(value) => setCampaignForm(prev => ({ ...prev, device_id: value }))}
+                      value={campaignForm.device}
+                      onValueChange={(value) => setCampaignForm(prev => ({ ...prev, device: value }))}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select device" />
                       </SelectTrigger>
                       <SelectContent>
                         {devices.map((device) => (
-                          <SelectItem key={device.id} value={device.id}>
-                            {device.name} ({device.ip_address})
+                          <SelectItem key={device._id} value={device._id}>
+                            {device.name} 
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -438,43 +455,79 @@ export function CampaignManagement() {
                   <div>
                     <Label htmlFor="contactList">Contact List</Label>
                     <Select 
-                      value={campaignForm.contact_list_id}
-                      onValueChange={(value) => setCampaignForm(prev => ({ ...prev, contact_list_id: value }))}
+                      value={campaignForm.contactList}
+                      onValueChange={(value) => setCampaignForm(prev => ({ ...prev, contactList: value }))}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select contact list" />
                       </SelectTrigger>
                       <SelectContent>
                         {contactLists.map((list) => (
-                          <SelectItem key={list.id} value={list.id}>
-                            {list.name} ({list?.opted_in_count?.toLocaleString()} contacts)
+                          <SelectItem key={list._id} value={list._id}>
+                            {list.name} ({list?.optedInCount?.toLocaleString()} contacts)
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label htmlFor="aiMessage">AI Message Variants</Label>
+                    <Label htmlFor="aiMessage">AI Messages</Label>
                     <Select 
-                      value={selectedMessageVariant}
-                      onValueChange={handleMessageVariantSelect}
+                      value={selectedMessageId}
+                      onValueChange={handleMessageSelect}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select AI message variant..." />
+                        <SelectValue placeholder="Select a message..." />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Use custom message</SelectItem>
-                        {messages?.flatMap((message: any) => 
-                          (message.variants || []).map((variant: any) => (
-                            <SelectItem key={variant.id} value={variant.id}>
-                              {variant.content.substring(0, 50)}... ({variant.tone})
-                            </SelectItem>
-                          ))
-                        )}
+                        {(messages || []).map((message: any) => (
+                          <SelectItem key={message._id} value={message._id}>
+                            {message.name} ({message.category})
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
+
+                {/* Message Variants Selection */}
+                {selectedMessageId && (
+                  <div>
+                    <Label htmlFor="messageVariant">Message Variants</Label>
+                    <Select 
+                      value={selectedVariantId}
+                      onValueChange={handleVariantSelect}
+                      disabled={loadingVariants}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={
+                          loadingVariants ? "Loading variants..." : "Select a variant..."
+                        } />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {messageVariants.map((variant) => (
+                          <SelectItem key={variant._id} value={variant._id}>
+                            <div className="flex flex-col items-start">
+                              <span className="font-medium">
+                                {variant.tone} ({variant.characterCount} chars)
+                              </span>
+                              <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                {variant.content.substring(0, 50)}...
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {loadingVariants && (
+                      <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading message variants...
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 <div>
                   <Label htmlFor="message">Message Content *</Label>
@@ -645,7 +698,7 @@ export function CampaignManagement() {
                   <div>
                     <p className="text-sm text-muted-foreground">Active Now</p>
                     <p className="text-2xl font-bold">
-                      {campaigns.filter(c => c.status === "active").length}
+                      {campaigns.filter((c: any) => c?.status === "active").length}
                     </p>
                   </div>
                   <Play className="h-8 w-8 text-green-500" />
@@ -659,7 +712,7 @@ export function CampaignManagement() {
                   <div>
                     <p className="text-sm text-muted-foreground">Messages Sent</p>
                     <p className="text-2xl font-bold">
-                      {campaigns.reduce((sum, c) => sum + c.sent_messages, 0).toLocaleString()}
+                      {campaigns.reduce((sum, c) => sum + c?.sentMessages, 0).toLocaleString()}
                     </p>
                   </div>
                   <BarChart3 className="h-8 w-8 text-purple-500" />
@@ -707,14 +760,14 @@ export function CampaignManagement() {
                   </TableHeader>
                   <TableBody>
                     {campaigns.map((campaign) => {
-                      const assignedDevice = devices.find(d => d.id === campaign.device_id);
+                      const assignedDevice = devices.find(d => d.id === campaign.device);
                       return (
                         <TableRow key={campaign.id}>
                           <TableCell>
                             <div>
                               <div className="font-medium">{campaign.name}</div>
                               <div className="text-xs text-muted-foreground truncate max-w-xs">
-                                {campaign.message_preview || campaign.message_content.substring(0, 50) + '...'}
+                                {campaign.messagePreview || campaign.messageContent.substring(0, 50) + '...'}
                               </div>
                             </div>
                           </TableCell>
@@ -727,10 +780,10 @@ export function CampaignManagement() {
                           <TableCell>
                             <div className="space-y-1">
                               <div className="text-sm">
-                                {campaign.sent_messages.toLocaleString()}/{campaign.total_contacts.toLocaleString()}
+                                {campaign?.sentMessages.toLocaleString()}/{campaign.totalContacts.toLocaleString()}
                               </div>
                               <Progress 
-                                value={campaign.total_contacts > 0 ? (campaign.sent_messages / campaign.total_contacts) * 100 : 0} 
+                                value={campaign.totalContacts > 0 ? (campaign?.sentMessages / campaign.totalContacts) * 100 : 0} 
                                 className="h-2 w-24"
                               />
                             </div>
@@ -741,7 +794,7 @@ export function CampaignManagement() {
                             </div>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {new Date(campaign.created_at).toLocaleDateString()}
+                            {new Date(campaign.createdAt).toLocaleDateString()}
                           </TableCell>
                           <TableCell>
                             {renderCampaignActions(campaign)}
@@ -768,22 +821,22 @@ export function CampaignManagement() {
             <CardContent>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {contactLists.map((list) => (
-                  <Card key={list.id}>
+                  <Card key={list._id}>
                     <CardContent className="p-4">
                       <div className="space-y-3">
                         <div>
                           <h3 className="font-medium">{list.name}</h3>
                           <p className="text-sm text-muted-foreground">
-                            Last updated: {new Date(list.updated_at).toLocaleDateString()}
+                            Last updated: {new Date(list.updatedAt).toLocaleDateString()}
                           </p>
                         </div>
                         
                         <div className="space-y-2">
                           <div className="flex justify-between text-sm">
                             <span>Opted In</span>
-                            <span>{list.opted_in_count}/{list.total_contacts}</span>
+                            <span>{list.optedInCount}/{list.totalContacts}</span>
                           </div>
-                          <Progress value={list.total_contacts > 0 ? (list.opted_in_count / list.total_contacts) * 100 : 0} />
+                          <Progress value={list.totalContacts > 0 ? (list.optedInCount / list.totalContacts) * 100 : 0} />
                         </div>
 
                         <div className="flex gap-2">
@@ -792,7 +845,7 @@ export function CampaignManagement() {
                             size="sm" 
                             className="flex-1"
                             onClick={() => {
-                              setSelectedContactListId(list.id);
+                              setSelectedContactListId(list._id);
                               setIsContactManagerOpen(true);
                             }}
                           >
@@ -806,7 +859,7 @@ export function CampaignManagement() {
                           <Button 
                             variant="outline" 
                             size="sm" 
-                            onClick={() => deleteContactList(list.id)}
+                            onClick={() => deleteContactList(list._id)}
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>

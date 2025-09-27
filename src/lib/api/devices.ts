@@ -75,7 +75,7 @@ export class EjoinAPIService {
     try {
       console.log("device",device)
       const response = await authFetch(`/goip_get_status?device_id=${device._id}`);
-      console.log("Device status response:", response);
+      console.log("getDeviceStatus response:", response);
       return response;
     } catch (error) {
       console.error('Error fetching device status:', error);
@@ -86,8 +86,8 @@ export class EjoinAPIService {
   static async getDevices(): Promise<DeviceStatus | null> {
     try {
       const response = await deviceAPI.getAll();;
-      console.log("Device status response:", response);
-      return response.devices;
+      console.log("getDevices response:", response);
+      return response.data?.devices;
     } catch (error) {
       console.error('Error fetching device status:', error);
       return null;
