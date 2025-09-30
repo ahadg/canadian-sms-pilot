@@ -6,7 +6,7 @@ export const EjoinAPI = {
   // ==============================
 
   // Submit new SMS tasks
-  submitSmsTasks: async (tasks: {
+  submitSmsTasks: async (device:any,tasks: {
     id: number;
     from: number;
     sms: string;
@@ -23,8 +23,8 @@ export const EjoinAPI = {
     recipients: number[];
     attachments?: { type: string; content: string }[];
   }[]) => {
-    return authFetch<{ success: boolean; message: string }>(
-      `/api/submit_sms_task`,
+    return authFetch(
+      `/api/ejoin/sms/submit_sms_task?device_id=${device._id}`,
       {
         method: "POST",
         data: JSON.stringify(tasks),
@@ -33,9 +33,9 @@ export const EjoinAPI = {
   },
 
   // Pause SMS tasks
-  pauseSmsTasks: async (taskIds: number[]) => {
-    return authFetch<{ success: boolean; message: string }>(
-      `/api/pause_sms_tasks`,
+  pauseSmsTasks: async (device:any,taskIds: number[]) => {
+    return authFetch(
+      `/api/ejoin/sms/pause_sms_tasks?device_id=${device._id}`,
       {
         method: "POST",
         data: JSON.stringify(taskIds),
@@ -44,9 +44,9 @@ export const EjoinAPI = {
   },
 
   // Resume SMS tasks
-  resumeSmsTasks: async (taskIds: number[]) => {
-    return authFetch<{ success: boolean; message: string }>(
-      `/api/resume_sms_tasks`,
+  resumeSmsTasks: async (device:any,taskIds: number[]) => {
+    return authFetch(
+      `/api/ejoin/sms/resume_sms_tasks?device_id=${device._id}`,
       {
         method: "POST",
         data: JSON.stringify(taskIds),
@@ -55,9 +55,9 @@ export const EjoinAPI = {
   },
 
   // Remove SMS tasks
-  removeSmsTasks: async (taskIds: number[]) => {
-    return authFetch<{ success: boolean; message: string }>(
-      `/api/remove_sms_tasks`,
+  removeSmsTasks: async (device:any,taskIds: number[]) => {
+    return authFetch(
+      `/api/ejoin/sms/remove_sms_tasks?device_id=${device._id}`,
       {
         method: "POST",
         data: JSON.stringify(taskIds),
@@ -66,7 +66,7 @@ export const EjoinAPI = {
   },
 
   // Get SMS tasks
-  getSmsTasks: async (payload: {
+  getSmsTasks: async (device:any,payload: {
     port: number;
     index: number;
     num: number;
@@ -80,14 +80,14 @@ export const EjoinAPI = {
         status: string;
         progress: number;
       }[];
-    }>(`/api/get_sms_tasks`, {
+    }>(`/api/ejoin/sms/get_sms_tasks?device_id=${device._id}`, {
       method: "POST",
       data: JSON.stringify(payload),
     });
   },
 
   // Get received SMSes
-  getReceivedSmses: async (payload: {
+  getReceivedSmses: async (device:any,payload: {
     id: number;
     num: number;
   }) => {
@@ -99,7 +99,7 @@ export const EjoinAPI = {
         content: string;
         timestamp: string;
       }[];
-    }>(`/api/get_received_smses`, {
+    }>(`/api/ejoin/sms/get_received_smses?device_id=${device._id}`, {
       method: "POST",
       data: JSON.stringify(payload),
     });

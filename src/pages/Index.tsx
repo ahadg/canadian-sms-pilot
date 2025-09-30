@@ -8,6 +8,8 @@ import { Analytics } from "@/components/analytics/Analytics";
 import { Auth } from "./Auth";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Toaster } from "@/components/ui/toaster";
+import { Settings } from "@/components/settings";
+import { Inbox } from "@/components/inbox";
 
 function AppContent() {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -40,13 +42,10 @@ function AppContent() {
         return <AIMessages />;
       case "analytics":
         return <Analytics />;
+      case "inbox":
+        return <Inbox />;
       case "settings":
-        return (
-          <div className="flex-1 p-6">
-            <h1 className="text-3xl font-bold mb-6">Settings</h1>
-            <p className="text-muted-foreground">Platform settings coming soon...</p>
-          </div>
-        );
+        return <Settings />
       default:
         return <Dashboard />;
     }

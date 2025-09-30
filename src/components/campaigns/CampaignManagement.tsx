@@ -67,6 +67,9 @@ export function CampaignManagement() {
     messages,
     fetchDevices,
     startCampaign,
+    pauseCampaignTasks,
+    resumeCampaignTasks,
+    removeCampaignTasks
   } = useCampaigns();
   
   const {
@@ -193,7 +196,7 @@ export function CampaignManagement() {
   };
 
   // Start campaign handler
-  const handleStartCampaign = async (campaign: Campaign) => {
+  const handleStartCampaign = async (campaign: any) => {
     setIsSending(true);
     try {
       console.log("campaign",campaign)
@@ -237,7 +240,7 @@ export function CampaignManagement() {
         status: campaignForm.status,
         device: campaignForm.device,
         taskSettings: taskSettings,
-        totalContacts: contacts_lists?.[0]?.totalContacts || 0,
+        totalContacts: contacts_lists?.contactList?.totalContacts || 0,
         sentMessages: 0,
         deliveredMessages: 0,
         failedMessages: 0
@@ -308,7 +311,37 @@ export function CampaignManagement() {
   };
 
   // Campaign actions renderer
-  const renderCampaignActions = (campaign: Campaign) => (
+  // Enhanced campaign actions renderer
+const renderCampaignActions = (campaign: Campaign) => {
+  const handlePause = async (campaign: Campaign) => {
+    console.log("campaign",campaign)
+    try {
+      await pauseCampaignTasks(campaign.device, campaign.taskIds);
+      await updateCampaignStatus(campaign._id, 'paused');
+    } catch (error) {
+      console.error('Error pausing campaign:', error);
+    }
+  };
+
+  const handleResume = async (campaign: Campaign) => {
+    try {
+      await resumeCampaignTasks(campaign.device, campaign.taskIds);
+      await updateCampaignStatus(campaign._id, 'active');
+    } catch (error) {
+      console.error('Error resuming campaign:', error);
+    }
+  };
+
+  const handleStop = async (campaign: Campaign) => {
+    try {
+      await removeCampaignTasks(campaign.device, campaign.taskIds);
+      await updateCampaignStatus(campaign._id, 'completed');
+    } catch (error) {
+      console.error('Error stopping campaign:', error);
+    }
+  };
+
+  return (
     <div className="flex gap-1">
       {campaign?.status === "scheduled" && (
         <Button 
@@ -324,28 +357,47 @@ export function CampaignManagement() {
         </Button>
       )}
       {campaign?.status === "active" && (
-        <Button 
-          variant="ghost" 
-          size="sm"
-          onClick={() => updateCampaignStatus(campaign.id, 'paused')}
-        >
-          <Pause className="h-3 w-3" />
-        </Button>
+        <>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => handlePause(campaign)}
+          >
+            <Pause className="h-3 w-3" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => handleStop(campaign)}
+          >
+            <Square className="h-3 w-3" />
+          </Button>
+        </>
       )}
       {campaign?.status === "paused" && (
-        <Button 
-          variant="ghost" 
-          size="sm"
-          onClick={() => updateCampaignStatus(campaign.id, 'active')}
-        >
-          <Play className="h-3 w-3" />
-        </Button>
+        <>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => handleResume(campaign)}
+          >
+            <Play className="h-3 w-3" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => handleStop(campaign)}
+          >
+            <Square className="h-3 w-3" />
+          </Button>
+        </>
       )}
       <Button variant="ghost" size="sm">
         <Eye className="h-3 w-3" />
       </Button>
     </div>
   );
+};
 
   // Send dialog component
   const renderSendDialog = () => (
@@ -402,10 +454,10 @@ export function CampaignManagement() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
+          {/* <Button variant="outline" size="sm">
             <Upload className="h-4 w-4 mr-2" />
             Import Contacts
-          </Button>
+          </Button> */}
           <Dialog open={isCreateCampaignOpen} onOpenChange={setIsCreateCampaignOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="bg-blue-600 text-white hover:bg-blue-700">
@@ -773,7 +825,7 @@ export function CampaignManagement() {
                           </TableCell>
                           <TableCell>
                             <div className="text-sm text-muted-foreground">
-                              {assignedDevice ? assignedDevice.name : 'No device'}
+                              {campaign?.device ? campaign?.device.name : 'No device'}
                             </div>
                           </TableCell>
                           <TableCell>{getStatusBadge(campaign.status)}</TableCell>

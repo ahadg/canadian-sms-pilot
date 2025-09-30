@@ -48,6 +48,12 @@ const navigationItems = [
     icon: BarChart3,
     description: "Reports & insights",
   },
+  {
+    id: "inbox",
+    label: "inbox",
+    icon: BarChart3,
+    description: "Reports & insights",
+  },
 ];
 
 export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {

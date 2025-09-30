@@ -32,6 +32,7 @@ export interface Campaign {
     contactList?: string;
     device?: string;
     scheduledDate?: string;
+    taskIds?: number[];
     taskSettings?: {
       interval: number;
       timeout: number;
@@ -46,6 +47,7 @@ export interface Campaign {
     priority?: 'low' | 'normal' | 'high';
     contactList?: string;
     device?: string;
+    taskIds?: number[];
     scheduledDate?: string;
     taskSettings?: {
       interval: number;
@@ -80,12 +82,12 @@ export interface Campaign {
       const queryString = queryParams.toString();
       const url = queryString ? `/api/campaigns?${queryString}` : '/api/campaigns';
       
-      return authFetch<{
+      return authFetch<{ data: {
         campaigns: Campaign[];
         total: number;
         totalPages: number;
         currentPage: number;
-      }>(url);
+      } }>(url);
     },
   
     // Get campaign by ID

@@ -64,7 +64,7 @@ export const contactAPI = {
   },
 
   // Contact methods
-  getContacts: async (listId: string, params?: {
+  getContacts: async (listId: any, params?: {
     page?: number;
     limit?: number;
     optedIn?: boolean;
