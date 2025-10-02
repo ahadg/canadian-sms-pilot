@@ -48,19 +48,37 @@ import {
   Download,
   X,
 } from "lucide-react";
-import { Device, useCampaigns, type Campaign } from "@/hooks/useCampaigns";
+import { Device, useCampaigns } from "@/hooks/useCampaigns";
 import { toast } from "sonner";
 import { ContactManager } from "./ContactManager";
 import { useContactManagement } from "@/hooks/useContactManagement";
 import { messageAPI, MessageVariant } from "@/lib/api/messages";
 import { contactAPI } from "@/lib/api/contacts";
+import { Campaign } from "@/lib/api/campaign";
+import { useSocket } from "@/hooks/useSocket";
 
 // Canadian SMS rules template
 const CANADIAN_SMS_TEMPLATE = `Your message here. Reply STOP to unsubscribe.`;
+const defulat_taskSettings = {
+  interval_min: 30000, // 30 seconds in milliseconds
+  interval_max: 50000, // 50 seconds in milliseconds
+  timeout: 30,
+  charset: "UTF-8" as "UTF-8" | "Base64" | "PDU",
+  coding: 0 as 0 | 1 | 2,
+  sms_type: 0 as 0 | 1 | 2,
+  sdr: true,
+  fdr: true,
+  dr: true,
+  to_all: false,
+  flash_sms: false,
+  sms_count: 100,
+  sms_period: 60
+}
 
 export function CampaignManagement() {
   const {
     campaigns,
+    setCampaigns,
     loading,
     createCampaign,
     updateCampaignStatus,
@@ -79,6 +97,37 @@ export function CampaignManagement() {
   } = useContactManagement();
   //useMessage
   console.log("campaigns",campaigns)
+  const { isConnected, campaignUpdates, leaveCampaignRoom } = useSocket();
+
+  // Track real-time campaign data
+  const [realTimeCampaigns, setRealTimeCampaigns] = useState<Campaign[]>(campaigns);
+
+    // Sync campaigns with real-time updates
+    useEffect(() => {
+      setRealTimeCampaigns(campaigns);
+    }, [campaigns]);
+
+      // Handle real-time campaign updates
+  useEffect(() => {
+    campaignUpdates.forEach(update => {
+      setCampaigns(prev => 
+        prev.map(campaign => 
+          campaign._id === update.campaignId 
+            ? { 
+                ...campaign, 
+                ...update.updates,
+                // Calculate delivery rate in real-time
+                deliveryRate: update.updates.sentMessages > 0 
+                  ? (update.updates.deliveredMessages / update.updates.sentMessages) * 100 
+                  : 0
+              } as Campaign
+            : campaign as Campaign
+        ) as Campaign[]
+      );
+    });
+  }, [campaignUpdates]);
+
+  
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [selectedContactListId, setSelectedContactListId] = useState<string | null>(null);
   const [isCreateCampaignOpen, setIsCreateCampaignOpen] = useState(false);
@@ -96,13 +145,7 @@ export function CampaignManagement() {
   const [loadingVariants, setLoadingVariants] = useState(false);
 
   // Task settings state
-  const [taskSettings, setTaskSettings] = useState({
-    interval: 10,
-    timeout: 30,
-    coding: 0,
-    sms_type: 0
-  });
-
+  const [taskSettings, setTaskSettings] = useState(defulat_taskSettings);
   // Campaign form state with Canadian template as default
   const [campaignForm, setCampaignForm] = useState({
     name: '',
@@ -256,12 +299,8 @@ export function CampaignManagement() {
         status: 'scheduled',
         device: devices.length > 0 ? devices[0].id : ''
       });
-      setTaskSettings({
-        interval: 10,
-        timeout: 30,
-        coding: 0,
-        sms_type: 0
-      });
+      // Update the reset in handleCreateCampaign
+      setTaskSettings(defulat_taskSettings);
       setSelectedMessageId('');
       setSelectedVariantId('');
       setMessageVariants([]);
@@ -316,7 +355,7 @@ const renderCampaignActions = (campaign: Campaign) => {
   const handlePause = async (campaign: Campaign) => {
     console.log("campaign",campaign)
     try {
-      await pauseCampaignTasks(campaign.device, campaign.taskIds);
+      await pauseCampaignTasks(campaign.device, [campaign.taskId]);
       await updateCampaignStatus(campaign._id, 'paused');
     } catch (error) {
       console.error('Error pausing campaign:', error);
@@ -325,7 +364,7 @@ const renderCampaignActions = (campaign: Campaign) => {
 
   const handleResume = async (campaign: Campaign) => {
     try {
-      await resumeCampaignTasks(campaign.device, campaign.taskIds);
+      await resumeCampaignTasks(campaign.device, [campaign.taskId]);
       await updateCampaignStatus(campaign._id, 'active');
     } catch (error) {
       console.error('Error resuming campaign:', error);
@@ -334,7 +373,7 @@ const renderCampaignActions = (campaign: Campaign) => {
 
   const handleStop = async (campaign: Campaign) => {
     try {
-      await removeCampaignTasks(campaign.device, campaign.taskIds);
+      await removeCampaignTasks(campaign.device, [campaign.taskId]);
       await updateCampaignStatus(campaign._id, 'completed');
     } catch (error) {
       console.error('Error stopping campaign:', error);
@@ -635,21 +674,49 @@ const renderCampaignActions = (campaign: Campaign) => {
                 {/* Task Settings Section */}
                 <div className="border-t pt-4">
                   <h3 className="font-medium mb-3">Task Settings</h3>
+                  
+                  {/* Interval Settings */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="interval">Interval (seconds) *</Label>
+                      <Label htmlFor="interval_min">Minimum Interval (ms) *</Label>
                       <Input 
-                        id="interval"
+                        id="interval_min"
                         type="number" 
-                        value={taskSettings.interval}
+                        value={taskSettings.interval_min}
                         onChange={(e) => setTaskSettings(prev => ({ 
                           ...prev, 
-                          interval: parseInt(e.target.value) || 10 
+                          interval_min: parseInt(e.target.value) || 30000 
                         }))}
-                        min="1"
-                        max="3600"
+                        min="1000"
+                        max="300000"
+                        step="1000"
                       />
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {taskSettings.interval_min / 1000} seconds
+                      </div>
                     </div>
+                    <div>
+                      <Label htmlFor="interval_max">Maximum Interval (ms) *</Label>
+                      <Input 
+                        id="interval_max"
+                        type="number" 
+                        value={taskSettings.interval_max}
+                        onChange={(e) => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          interval_max: parseInt(e.target.value) || 50000 
+                        }))}
+                        min="1000"
+                        max="300000"
+                        step="1000"
+                      />
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {taskSettings.interval_max / 1000} seconds
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Timeout and Character Set */}
+                  <div className="grid grid-cols-2 gap-4 mt-3">
                     <div>
                       <Label htmlFor="timeout">Timeout (seconds) *</Label>
                       <Input 
@@ -664,7 +731,28 @@ const renderCampaignActions = (campaign: Campaign) => {
                         max="300"
                       />
                     </div>
+                    <div>
+                      <Label htmlFor="charset">Character Set</Label>
+                      <Select 
+                        value={taskSettings.charset}
+                        onValueChange={(value: "UTF-8" | "Base64" | "PDU") => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          charset: value 
+                        }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select charset" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="UTF-8">UTF-8</SelectItem>
+                          <SelectItem value="Base64">Base64</SelectItem>
+                          <SelectItem value="PDU">PDU</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
+
+                  {/* Coding and SMS Type */}
                   <div className="grid grid-cols-2 gap-4 mt-3">
                     <div>
                       <Label htmlFor="coding">Message Coding</Label>
@@ -672,46 +760,154 @@ const renderCampaignActions = (campaign: Campaign) => {
                         value={taskSettings.coding.toString()}
                         onValueChange={(value) => setTaskSettings(prev => ({ 
                           ...prev, 
-                          coding: parseInt(value) 
+                          coding: parseInt(value) as 0 | 1 | 2 
                         }))}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select coding" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="0">Auto-detect</SelectItem>
+                          <SelectItem value="0">Not Assign (Auto-detect)</SelectItem>
                           <SelectItem value="1">USC2 (Unicode)</SelectItem>
                           <SelectItem value="2">GSM 7-bit</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <Label htmlFor="smsType">SMS Type</Label>
+                      <Label htmlFor="sms_type">SMS Type</Label>
                       <Select 
                         value={taskSettings.sms_type.toString()}
                         onValueChange={(value) => setTaskSettings(prev => ({ 
                           ...prev, 
-                          sms_type: parseInt(value) 
+                          sms_type: parseInt(value) as 0 | 1 | 2 
                         }))}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select SMS type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="0">Normal SMS</SelectItem>
-                          <SelectItem value="1">Flash SMS</SelectItem>
-                          <SelectItem value="2">Unicode SMS</SelectItem>
+                          <SelectItem value="0">SMS</SelectItem>
+                          <SelectItem value="1">MMS</SelectItem>
+                          <SelectItem value="2">MMS with multiple numbers and subjects</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+                  </div>
+
+                  {/* Report Settings */}
+                  <div className="grid grid-cols-3 gap-4 mt-3">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="sdr"
+                        checked={taskSettings.sdr}
+                        onChange={(e) => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          sdr: e.target.checked 
+                        }))}
+                        className="rounded border-gray-300"
+                      />
+                      <Label htmlFor="sdr" className="text-sm">SDR Report</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="fdr"
+                        checked={taskSettings.fdr}
+                        onChange={(e) => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          fdr: e.target.checked 
+                        }))}
+                        className="rounded border-gray-300"
+                      />
+                      <Label htmlFor="fdr" className="text-sm">FDR Report</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="dr"
+                        checked={taskSettings.dr}
+                        onChange={(e) => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          dr: e.target.checked 
+                        }))}
+                        className="rounded border-gray-300"
+                      />
+                      <Label htmlFor="dr" className="text-sm">DR Report</Label>
+                    </div>
+                  </div>
+
+                  {/* Additional Settings */}
+                  <div className="grid grid-cols-2 gap-4 mt-3">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="to_all"
+                        checked={taskSettings.to_all}
+                        onChange={(e) => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          to_all: e.target.checked 
+                        }))}
+                        className="rounded border-gray-300"
+                      />
+                      <Label htmlFor="to_all" className="text-sm">Use All Ports</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="flash_sms"
+                        checked={taskSettings.flash_sms}
+                        onChange={(e) => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          flash_sms: e.target.checked 
+                        }))}
+                        className="rounded border-gray-300"
+                      />
+                      <Label htmlFor="flash_sms" className="text-sm">Flash SMS</Label>
+                    </div>
+                  </div>
+
+                  {/* Status Report Settings */}
+                  <div className="grid grid-cols-2 gap-4 mt-3">
+                    <div>
+                      <Label htmlFor="sms_count">SMS Count for Status Report</Label>
+                      <Input 
+                        id="sms_count"
+                        type="number" 
+                        value={taskSettings.sms_count}
+                        onChange={(e) => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          sms_count: parseInt(e.target.value) || 100 
+                        }))}
+                        min="0"
+                        max="1000"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="sms_period">Status Report Period (seconds)</Label>
+                      <Input 
+                        id="sms_period"
+                        type="number" 
+                        value={taskSettings.sms_period}
+                        onChange={(e) => setTaskSettings(prev => ({ 
+                          ...prev, 
+                          sms_period: parseInt(e.target.value) || 60 
+                        }))}
+                        min="0"
+                        max="3600"
+                      />
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Set to 0 to disable status reports
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1">
+                  {/* <Button variant="outline" className="flex-1">
                     <Eye className="h-4 w-4 mr-2" />
                     Preview
-                  </Button>
+                  </Button> */}
                   <Button className="flex-1" onClick={handleCreateCampaign}>
                     <Send className="h-4 w-4 mr-2" />
                     Create Campaign

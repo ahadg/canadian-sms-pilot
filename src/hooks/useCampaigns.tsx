@@ -5,36 +5,9 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { deviceAPI } from '@/lib/api';
 import { messageAPI, SavedMessage } from '@/lib/api/messages';
 import { v4 as uuidv4 } from 'uuid';
-import { campaignAPI } from '@/lib/api/campaign';
+import { Campaign, campaignAPI } from '@/lib/api/campaign';
 import { contactAPI } from '@/lib/api/contacts';
 import { EjoinAPI } from '@/lib/api/ejoin';
-
-export interface Campaign {
-  _id: string;
-  id: string;
-  name: string;
-  status: 'active' | 'paused' | 'completed' | 'scheduled';
-  totalContacts: number;
-  sentMessages: number;
-  taskIds : Array<number>;
-  deliveredMessages: number;
-  failedMessages: number;
-  scheduledDate?: string;
-  createdAt: string;
-  updatedAt: string;
-  messageContent: string;
-  messagePreview?: string;
-  priority: 'low' | 'normal' | 'high';
-  contactList?: string;
-  device?: string;
-  taskSettings?: {
-    interval: number;
-    timeout: number;
-    coding: number;
-    smsType: number;
-  };
-  user: string;
-}
 
 export interface SmsTask {
   tid: string;
@@ -190,24 +163,27 @@ export function useCampaigns() {
       // Extract phone numbers from all contacts
       const phoneNumbers = contacts.map(contact => contact.phoneNumber);
       
-      // Create a single task with all recipients
+      // In your sendCampaignSms function, update the task object:
       const task = {
         id: Number(`${Date.now()}${Math.floor(Math.random() * 1000)}`),
-        from: 1, // Default from number, make configurable if needed
+        from: 1,
         sms: campaign.messageContent,
-        interval_min: campaign.taskSettings?.interval || 10,
-        interval_max: campaign.taskSettings?.interval || 10,
+        interval_min: campaign.taskSettings?.interval_min || 30000,
+        interval_max: campaign.taskSettings?.interval_max || 50000,
         timeout: campaign.taskSettings?.timeout || 30,
-        charset: 'utf8',
-        coding: campaign.taskSettings?.coding || (campaign.messageContent.length > 160 ? 1 : 0),
-        sms_type: campaign.taskSettings?.smsType || 0,
-        sdr: true,  // Send delivery report
-        fdr: true,  // Final delivery report
-        dr: true,   // Delivery report
-        to_all: false,
-        recipients: phoneNumbers, // All phone numbers in one array
+        charset: campaign.taskSettings?.charset?.toLowerCase() === 'utf-8' ? 'utf8' : campaign.taskSettings?.charset?.toLowerCase() || 'utf8',
+        coding: campaign.taskSettings?.coding || 0,
+        sms_type: campaign.taskSettings?.sms_type || 0,
+        sdr: campaign.taskSettings?.sdr !== false, // Default to true if not specified
+        fdr: campaign.taskSettings?.fdr !== false,
+        dr: campaign.taskSettings?.dr !== false,
+        to_all: campaign.taskSettings?.to_all || false,
+        flash_sms: campaign.taskSettings?.flash_sms || false,
+        sms_count: campaign.taskSettings?.sms_count || 100,
+        sms_period: campaign.taskSettings?.sms_period || 60,
+        recipients: phoneNumbers,
       };
-  
+    
       console.log("SMS task prepared:", task);
       console.log(`Sending to ${phoneNumbers.length} recipients at once`);
   
@@ -220,7 +196,7 @@ export function useCampaigns() {
   
       // Store the task ID with the campaign for future reference
       await campaignAPI.update(campaignId, {
-        taskIds: [ejoinResponse?.[0]?.id] // Store the task ID for pause/resume/remove operations
+        taskId: ejoinResponse?.[0]?.id // Store the task ID for pause/resume/remove operations
       });
   
       // // Update device daily sent count
@@ -340,7 +316,7 @@ const createCampaign = async (campaignData: any) => {
     const response = await campaignAPI.create({
       ...campaignData,
       messagePreview: campaignData.messageContent.substring(0, 50) + '...',
-      taskIds: [] // Initialize empty array for task IDs
+      taskId: [] // Initialize empty array for task IDs
     });
     
     const newCampaign = response.data.campaign;
@@ -409,9 +385,9 @@ const createCampaign = async (campaignData: any) => {
   // Add these methods to your useCampaigns hook:
 
 // Pause specific SMS tasks
-const pauseCampaignTasks = async (device:any,taskIds: number[]) => {
+const pauseCampaignTasks = async (device:any,taskId: number[]) => {
   try {
-    const response = await EjoinAPI.pauseSmsTasks(device,taskIds);
+    const response = await EjoinAPI.pauseSmsTasks(device,taskId);
     console.log("pauseCampaignTasks_response",response)
     if (response?.[0]?.reason === "OK") {
       toast.success('Campaign tasks paused successfully');
@@ -427,9 +403,9 @@ const pauseCampaignTasks = async (device:any,taskIds: number[]) => {
 };
 
 // Resume specific SMS tasks
-const resumeCampaignTasks = async (device:any,taskIds: number[]) => {
+const resumeCampaignTasks = async (device:any,taskId: number[]) => {
   try {
-    const response = await EjoinAPI.resumeSmsTasks(device,taskIds);
+    const response = await EjoinAPI.resumeSmsTasks(device,taskId);
     console.log("resumeCampaignTasks_response",response)
     if (response?.[0]?.reason === "OK") {
       toast.success('Campaign tasks resumed successfully');
@@ -445,9 +421,9 @@ const resumeCampaignTasks = async (device:any,taskIds: number[]) => {
 };
 
 // Remove specific SMS tasks
-const removeCampaignTasks = async (device:any,taskIds: number[]) => {
+const removeCampaignTasks = async (device:any,taskId: number[]) => {
   try {
-    const response = await EjoinAPI.removeSmsTasks(device,taskIds);
+    const response = await EjoinAPI.removeSmsTasks(device,taskId);
     console.log("removeCampaignTasks_response",response)
     if (response?.[0]?.reason === "OK") {
       toast.success('Campaign tasks removed successfully');
@@ -534,6 +510,7 @@ const getCampaignReceivedSms = async (device:any,taskId: number, num: number = 5
 
   return {
     campaigns,
+    setCampaigns,
     contactLists,
     messages,
     messageTemplates,

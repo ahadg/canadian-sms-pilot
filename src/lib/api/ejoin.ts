@@ -24,7 +24,7 @@ export const EjoinAPI = {
     attachments?: { type: string; content: string }[];
   }[]) => {
     return authFetch(
-      `/api/ejoin/sms/submit_sms_task?device_id=${device._id}`,
+      `/api/ejoin/sms/submit_sms_tasks?device_id=${device._id}`,
       {
         method: "POST",
         data: JSON.stringify(tasks),
@@ -33,34 +33,34 @@ export const EjoinAPI = {
   },
 
   // Pause SMS tasks
-  pauseSmsTasks: async (device:any,taskIds: number[]) => {
+  pauseSmsTasks: async (device:any,taskId: number[]) => {
     return authFetch(
       `/api/ejoin/sms/pause_sms_tasks?device_id=${device._id}`,
       {
         method: "POST",
-        data: JSON.stringify(taskIds),
+        data: JSON.stringify(taskId),
       }
     );
   },
 
   // Resume SMS tasks
-  resumeSmsTasks: async (device:any,taskIds: number[]) => {
+  resumeSmsTasks: async (device:any,taskId: number[]) => {
     return authFetch(
       `/api/ejoin/sms/resume_sms_tasks?device_id=${device._id}`,
       {
         method: "POST",
-        data: JSON.stringify(taskIds),
+        data: JSON.stringify(taskId),
       }
     );
   },
 
   // Remove SMS tasks
-  removeSmsTasks: async (device:any,taskIds: number[]) => {
+  removeSmsTasks: async (device:any,taskId: number[]) => {
     return authFetch(
       `/api/ejoin/sms/remove_sms_tasks?device_id=${device._id}`,
       {
         method: "POST",
-        data: JSON.stringify(taskIds),
+        data: JSON.stringify(taskId),
       }
     );
   },

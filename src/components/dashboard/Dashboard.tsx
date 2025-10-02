@@ -85,7 +85,7 @@ export function Dashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Send className="h-5 w-5" />
-              Active Campaigns
+              Recent/Active Campaigns
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -93,9 +93,6 @@ export function Dashboard() {
               <div className="p-3 border rounded-lg">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium">Black Friday Promo</span>
-                  <Button variant="ghost" size="sm">
-                    <Pause className="h-3 w-3" />
-                  </Button>
                 </div>
                 <div className="text-sm text-muted-foreground mb-2">
                   Progress: 7,245 / 15,000 contacts
@@ -110,9 +107,6 @@ export function Dashboard() {
               <div className="p-3 border rounded-lg">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium">Product Update</span>
-                  <Button variant="ghost" size="sm">
-                    <Play className="h-3 w-3" />
-                  </Button>
                 </div>
                 <div className="text-sm text-muted-foreground mb-2">
                   Progress: 2,156 / 8,500 contacts
@@ -127,9 +121,6 @@ export function Dashboard() {
               <div className="p-3 border rounded-lg">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium">Welcome Series</span>
-                  <Button variant="ghost" size="sm">
-                    <Pause className="h-3 w-3" />
-                  </Button>
                 </div>
                 <div className="text-sm text-muted-foreground mb-2">
                   Progress: 892 / 3,200 contacts
@@ -143,8 +134,8 @@ export function Dashboard() {
             </div>
 
             <Button variant="outline" className="w-full">
-              <Plus className="h-4 w-4 mr-2" />
-              Create New Campaign
+              {/* <Plus className="h-4 w-4 mr-2" /> */}
+              Manage Campaign
             </Button>
           </CardContent>
         </Card>

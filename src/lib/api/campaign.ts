@@ -1,28 +1,39 @@
 import { authFetch } from "@/lib/api";
 
 export interface Campaign {
-    _id: string;
-    name: string;
-    status: 'active' | 'paused' | 'completed' | 'scheduled';
-    totalContacts: number;
-    sentMessages: number;
-    deliveredMessages: number;
-    failedMessages: number;
-    scheduledDate?: string;
-    messageContent: string;
-    messagePreview?: string;
-    priority: 'low' | 'normal' | 'high';
-    contactList?: string;
-    device?: string;
-    taskSettings?: {
-      interval: number;
-      timeout: number;
-      coding: number;
-      smsType: number;
-    };
-    createdAt: string;
-    updatedAt: string;
-    user: string;
+  _id: string;
+  id: string;
+  name: string;
+  status: 'active' | 'paused' | 'completed' | 'scheduled';
+  totalContacts: number;
+  sentMessages: number;
+  taskId: Array<number>;
+  deliveredMessages: number;
+  failedMessages: number;
+  scheduledDate?: string;
+  createdAt: string;
+  updatedAt: string;
+  messageContent: string;
+  messagePreview?: string;
+  priority: 'low' | 'normal' | 'high';
+  contactList?: string;
+  device?: string;
+  taskSettings?: {
+    interval_min: number;
+    interval_max: number;
+    timeout: number;
+    charset: string;
+    coding: number;
+    sms_type: number;
+    sdr: boolean;
+    fdr: boolean;
+    dr: boolean;
+    to_all: boolean;
+    flash_sms: boolean;
+    sms_count: number;
+    sms_period: number;
+  };
+  user: string;
   }
   
   export interface CreateCampaignData {
@@ -32,7 +43,7 @@ export interface Campaign {
     contactList?: string;
     device?: string;
     scheduledDate?: string;
-    taskIds?: number[];
+    taskId?: number[];
     taskSettings?: {
       interval: number;
       timeout: number;
@@ -41,21 +52,6 @@ export interface Campaign {
     };
   }
   
-  export interface UpdateCampaignData {
-    name?: string;
-    messageContent?: string;
-    priority?: 'low' | 'normal' | 'high';
-    contactList?: string;
-    device?: string;
-    taskIds?: number[];
-    scheduledDate?: string;
-    taskSettings?: {
-      interval: number;
-      timeout: number;
-      coding: number;
-      smsType: number;
-    };
-  }
   
   export interface CampaignStats {
     totalContacts: number;
@@ -104,7 +100,7 @@ export interface Campaign {
     },
   
     // Update campaign
-    update: async (id: string, data: UpdateCampaignData) => {
+    update: async (id: string, data: any) => {
       return authFetch<{ data: {campaign: Campaign } }>(`/api/campaigns/${id}`, {
         method: 'PUT',
         data: JSON.stringify(data)
@@ -185,7 +181,7 @@ export interface Campaign {
     },
   
     // Bulk update campaigns
-    bulkUpdate: async (ids: string[], updates: Partial<UpdateCampaignData>) => {
+    bulkUpdate: async (ids: string[], updates: Partial<any>) => {
       return authFetch<{ updatedCount: number }>('/api/campaigns/bulk-update', {
         method: 'POST',
         data: JSON.stringify({ ids, updates })
