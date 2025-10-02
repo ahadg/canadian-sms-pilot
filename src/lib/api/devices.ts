@@ -74,7 +74,7 @@ export class EjoinAPIService {
   static async getDeviceStatus(device: Device): Promise<DeviceStatus | null> {
     try {
       console.log("device",device)
-      const response = await authFetch(`/goip_get_status?device_id=${device._id}`);
+      const response = await authFetch(`/api/ejoin/goip_get_status?device_id=${device._id}`);
       console.log("getDeviceStatus response:", response);
       return response;
     } catch (error) {

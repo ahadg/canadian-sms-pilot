@@ -42,12 +42,12 @@ const navigationItems = [
     icon: MessageSquare,
     description: "Message variations",
   },
-  {
-    id: "analytics",
-    label: "Analytics",
-    icon: BarChart3,
-    description: "Reports & insights",
-  },
+  // {
+  //   id: "analytics",
+  //   label: "Analytics",
+  //   icon: BarChart3,
+  //   description: "Reports & insights",
+  // },
   {
     id: "inbox",
     label: "inbox",
