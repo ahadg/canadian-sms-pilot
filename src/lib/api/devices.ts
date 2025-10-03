@@ -239,18 +239,37 @@ export class EjoinAPIService {
     }
   }
 
-  // Reset daily sent count
-  static async resetDailyCount(deviceId: string): Promise<{success: boolean, message?: string}> {
-    try {
-      await authFetch(`/api/devices/${deviceId}/reset-daily-count`, {
-        method: 'POST'
-      });
-      return { success: true };
-    } catch (error: any) {
-      console.error('Error resetting daily count:', error);
-      return { success: false, message: error.message };
+
+    // Send command to device
+    static async sendUSSDCommand(deviceId: string, body): Promise<{success: boolean, response?: any, message?: string}> {
+      try {
+        const response = await authFetch(`/api/ejoin/commands/sendUSSD?device_id=${deviceId}`, {
+          method: 'POST',
+          data:  JSON.stringify(body)
+        });
+        return { success: true, response };
+      } catch (error: any) {
+        console.error('Error sending device command:', error);
+        return { success: false, message: error.message };
+      }
     }
-  }
+
+    // Get USSD history from device
+    static async getUSSDHistory(deviceId: string, port: number): Promise<{success: boolean, response?: any, message?: string}> {
+      try {
+        const response = await authFetch(
+          `/api/sims/${deviceId}/${port}/ussd-commands`,
+          { method: 'GET' }
+        );    
+
+        return { success: true, response };
+      } catch (error: any) {
+        console.error('Error fetching USSD history:', error);
+        return { success: false, message: error.message };
+      }
+    }
+
+  
 
   // Helper method to get SIM status from status code and inserted state
   private static getSIMStatus(statusCode: number, inserted: number): "active" | "inactive" | "error" {
