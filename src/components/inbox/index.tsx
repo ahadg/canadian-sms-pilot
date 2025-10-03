@@ -22,157 +22,38 @@ import {
   FolderSync
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
+import { useMessagesStore, decodeBase64 } from "@/store/useMessagesStore";
 import { toast } from "sonner";
-import { authFetch, deviceAPI } from "@/lib/api";
-import { Device } from "@/hooks/useCampaigns";
-import { EjoinAPI } from "@/lib/api/ejoin";
-import { decodeBase64, exportMessages, getStatusColor } from "./utils";
-
-// API Response Interfaces
-interface ApiSMS {
-  port: number;
-  slot: number;
-  timestamp: number;
-  from: string;
-  to: string;
-  is_report: boolean;
-  sms: string; // Base64 encoded
-}
-
-interface ApiResponse {
-  ssrc: string;
-  next_id: number;
-  smses: ApiSMS[];
-}
-
-// UI Data Interface
-interface ReceivedSMS {
-  id: string;
-  port: number;
-  slot: number;
-  timestamp: string;
-  from: string;
-  to: string;
-  sms: string;
-  status: 'delivered' | 'read' | 'replied' | 'failed';
-  direction: 'inbound' | 'outbound';
-  read: boolean;
-  isReport: boolean;
-}
-
-interface InboxFilters {
-  search: string;
-  status: string;
-  direction: string;
-  dateFrom: string;
-  dateTo: string;
-}
+import { deviceAPI } from "@/lib/api";
 
 const STATUS_OPTIONS = ['all', 'delivered', 'read', 'replied', 'failed'];
 const DIRECTION_OPTIONS = ['all', 'inbound', 'outbound'];
 
-// Utility function to generate unique ID
-const generateMessageId = (sms: ApiSMS): string => {
-  return `${sms.port}-${sms.slot}-${sms.timestamp}-${sms.from}`;
-};
-
-// Utility function to convert API SMS to UI SMS
-// Utility function to convert API SMS to UI SMS
-const convertApiSmsToUiSms = (apiSms: ApiSMS | any): ReceivedSMS => {
-  let timestamp: string;
-  
-  if (typeof apiSms.timestamp === "number") {
-    // Unix timestamp (seconds → ms)
-    timestamp = new Date(apiSms.timestamp * 1000).toISOString();
-  } else if (typeof apiSms.timestamp === "string") {
-    // Already ISO date
-    timestamp = new Date(apiSms.timestamp).toISOString();
-  } else {
-    // Fallback: now
-    timestamp = new Date().toISOString();
-  }
-
-  return {
-    id: apiSms._id || generateMessageId(apiSms),
-    port: apiSms.sim?.port || apiSms.port || 0,
-    slot: apiSms.sim?.slot || apiSms.slot || 0,
-    timestamp,
-    from: apiSms.from || "",
-    to: apiSms.to || "",
-    sms: apiSms.sms || "",
-    status: "delivered",   // Default status
-    direction: "inbound",  // Default direction
-    read: apiSms.read ?? false,
-    isReport: apiSms.isReport ?? apiSms.is_report ?? false,
-  };
-};
-
-
 export function Inbox() {
   const [activeTab, setActiveTab] = useState('all');
-  const [messages, setMessages] = useState<ReceivedSMS[]>([]);
-  const [filteredMessages, setFilteredMessages] = useState<ReceivedSMS[]>([]);
-  const [selectedMessage, setSelectedMessage] = useState<ReceivedSMS | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [filters, setFilters] = useState<InboxFilters>({
-    search: '',
-    status: 'all',
-    direction: 'all',
-    dateFrom: '',
-    dateTo: ''
-  });
   const [showFilters, setShowFilters] = useState(false);
   const { isAuthenticated } = useAuthStore();
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
-
-  // Fetch available devices
-  const fetchDevices = async (): Promise<void> => {
-    if (!isAuthenticated) return;
-    
-    try {
-      const response = await deviceAPI.getAll();
-      const deviceList = response.data.devices || [];
-      setDevices(deviceList);
-      if (deviceList.length > 0) {
-        setSelectedDevice(deviceList[0]);
-      }
-    } catch (error) {
-      console.error('Error fetching devices:', error);
-      toast.error('Failed to load devices');
-    }
-  };
-
-  // Sync messages from device
-  const syncMessagesFromDevice = async (deviceId: string): Promise<void> => {
-    if (!isAuthenticated || !deviceId) return;
-    
-    setIsSyncing(true);
-    try {
-      const response = await authFetch(`/api/sms/sync/${deviceId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      console.log("response", response);
-      if (!response.success) {
-        throw new Error(`Sync failed: ${response.statusText}`);
-      }
-      
-      //const result = await response.json();
-      toast.success('Messages synced successfully from device');
-      
-      // Reload messages after sync
-      await loadMessages();
-    } catch (error) {
-      console.error('Failed to sync messages from device:', error);
-      toast.error('Failed to sync messages from device');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  
+  // Zustand store
+  const {
+    messages,
+    filteredMessages,
+    selectedMessage,
+    isLoading,
+    isSyncing,
+    filters,
+    devices,
+    selectedDevice,
+    setSelectedMessage,
+    setSelectedDevice,
+    updateFilter,
+    clearFilters,
+    filterMessages,
+    fetchDevices,
+    syncMessagesFromDevice,
+    loadMessages,
+    markAsRead
+  } = useMessagesStore();
 
   // Manual sync handler
   const handleManualSync = async (): Promise<void> => {
@@ -183,97 +64,12 @@ export function Inbox() {
     await syncMessagesFromDevice(selectedDevice._id);
   };
 
-  // Load messages with fallback logic
-  const loadMessages = async (): Promise<void> => {
-    if (!isAuthenticated) return;
-    
-    setIsLoading(true);
-    try {
-      // First try to get messages from the API
-      let messagesData: ReceivedSMS[] = [];
-      
-      try {
-        const apiResponse = await authFetch('/api/sms');
-        console.log("apiResponse", apiResponse);
-        if (apiResponse) {
-          const apiData = apiResponse.data;
-          messagesData = apiData.messages || apiData.smses || [];
-          
-          // If no messages found in API, try to sync from device
-          if (messagesData.length === 0 && selectedDevice) {
-            toast.info('No messages found in database, syncing from device...');
-            await syncMessagesFromDevice(selectedDevice._id);
-            return; // Exit early as sync will trigger reload
-          }
-        }
-      } catch (apiError) {
-        console.warn('Failed to fetch messages from API, trying device sync:', apiError);
-        
-        // If API fails, try to get messages directly from device
-        if (selectedDevice) {
-          toast.info('Fetching messages directly from device...');
-          await syncMessagesFromDevice(selectedDevice._id);
-          return; // Exit early as sync will trigger reload
-        }
-      }
-
-      // If we have messages from API, set them
-      if (messagesData.length > 0) {
-        // Convert API format to UI format if needed
-        const convertedMessages = messagesData.map(msg => 
-          'sms' in msg ? convertApiSmsToUiSms(msg as any) : msg as ReceivedSMS
-        );
-        setMessages(convertedMessages);
-        
-        // Also trigger sync in background if we have a device selected
-        if (selectedDevice) {
-          setTimeout(() => {
-            syncMessagesFromDevice(selectedDevice.id).catch(error => {
-              console.warn('Background sync failed:', error);
-            });
-          }, 1000);
-        }
-      }
-      
-    } catch (error) {
-      console.error('Failed to load messages:', error);
-      toast.error('Failed to load messages');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Alternative load messages using EjoinAPI (keeping your original implementation as fallback)
-  const loadMessagesFromDevice = async (): Promise<void> => {
-    if (!isAuthenticated || !selectedDevice) return;
-    
-    setIsLoading(true);
-    try {
-      const response = await EjoinAPI.getReceivedSmses(selectedDevice, {
-        "id": 1,
-        "num": 0
-      });
-      
-      console.log("Device response", response);
-      const messagesData = response.smses || [];
-      
-      // Convert API SMS format to UI SMS format
-      const convertedMessages = messagesData.map(convertApiSmsToUiSms);
-      setMessages(convertedMessages);
-      
-    } catch (error) {
-      console.error('Failed to load messages from device:', error);
-      toast.error('Failed to load messages from device');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Effects
   useEffect(() => {
     if (isAuthenticated) {
       fetchDevices();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchDevices]);
 
   useEffect(() => {
     if (isAuthenticated && selectedDevice) {
@@ -282,98 +78,10 @@ export function Inbox() {
   }, [isAuthenticated, selectedDevice]);
 
   useEffect(() => {
-    filterMessages();
-  }, [messages, filters, activeTab]);
+    filterMessages(activeTab);
+  }, [messages, filters, activeTab, filterMessages]);
 
-  const filterMessages = (): void => {
-    let filtered = [...messages];
-    console.log("filtered", messages);
-    // Filter by tab
-    switch (activeTab) {
-      case 'unread':
-        filtered = filtered.filter(msg => !msg.read);
-        break;
-      case 'replied':
-        filtered = filtered.filter(msg => msg.status === 'replied');
-        break;
-      case 'inbound':
-        filtered = filtered.filter(msg => msg.direction === 'inbound');
-        break;
-      case 'outbound':
-        filtered = filtered.filter(msg => msg.direction === 'outbound');
-        break;
-      // 'all' tab - no additional filtering
-    }
-
-    // Filter by search
-    if (filters.search.trim()) {
-      const searchLower = filters.search.toLowerCase().trim();
-      filtered = filtered.filter(msg => 
-        decodeBase64(msg.sms).toLowerCase().includes(searchLower) ||
-        msg.from.toLowerCase().includes(searchLower) ||
-        msg.to.toLowerCase().includes(searchLower)
-      );
-    }
-
-    // Filter by status
-    if (filters.status !== 'all') {
-      filtered = filtered.filter(msg => msg.status === filters.status);
-    }
-
-    // Filter by direction
-    if (filters.direction !== 'all') {
-      filtered = filtered.filter(msg => msg.direction === filters.direction);
-    }
-
-    // Filter by date range
-    if (filters.dateFrom) {
-      filtered = filtered.filter(msg => 
-        new Date(msg.timestamp) >= new Date(filters.dateFrom)
-      );
-    }
-
-    if (filters.dateTo) {
-      const toDate = new Date(filters.dateTo);
-      toDate.setHours(23, 59, 59, 999);
-      filtered = filtered.filter(msg => 
-        new Date(msg.timestamp) <= toDate
-      );
-    }
-
-    // Sort by timestamp (newest first)
-    filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-    setFilteredMessages(filtered);
-  };
-
-  const updateFilter = (key: keyof InboxFilters, value: string): void => {
-    setFilters(prev => ({ ...prev, [key]: value }));
-  };
-
-  const markAsRead = async (messageId: string): Promise<void> => {
-    try {
-      setMessages(prev => prev.map(msg => 
-        msg.id === messageId ? { ...msg, read: true } : msg
-      ));
-      
-      if (selectedMessage?.id === messageId) {
-        setSelectedMessage(prev => prev ? { ...prev, read: true } : null);
-      }
-      
-      // Optional: Send API request to mark as read
-      await authFetch(`/api/sms/markAsRead/${messageId}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          }}
-      );
-    } catch (error) {
-      console.error('Failed to mark as read:', error);
-      toast.error('Failed to mark message as read');
-    }
-  };
-
+  // UI Helper Functions
   const getDirectionIcon = (direction: string) => {
     return direction === 'inbound' ? 
       <MailPlus className="h-4 w-4 text-green-600" /> : 
@@ -395,14 +103,14 @@ export function Inbox() {
     return date.toLocaleDateString();
   };
 
-  const clearFilters = (): void => {
-    setFilters({
-      search: '',
-      status: 'all',
-      direction: 'all',
-      dateFrom: '',
-      dateTo: ''
-    });
+  const getStatusColor = (status: string): string => {
+    const colors = {
+      delivered: 'border-green-500 text-green-700 bg-green-50',
+      read: 'border-blue-500 text-blue-700 bg-blue-50',
+      replied: 'border-purple-500 text-purple-700 bg-purple-50',
+      failed: 'border-red-500 text-red-700 bg-red-50',
+    };
+    return colors[status as keyof typeof colors] || 'border-gray-500 text-gray-700 bg-gray-50';
   };
 
   if (!isAuthenticated) {
@@ -457,16 +165,6 @@ export function Inbox() {
             )}
             Sync
           </Button>
-          {/* <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={exportMessages} 
-            disabled={filteredMessages.length === 0}
-            className="flex items-center gap-2"
-          >
-            <Download className="h-4 w-4" />
-            Export
-          </Button> */}
           <Button 
             size="sm" 
             onClick={loadMessages} 
@@ -665,7 +363,6 @@ export function Inbox() {
                         selectedMessage?.id === message.id ? 'bg-muted border-l-4 border-l-primary' : ''
                       } ${!message.read ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
                       onClick={() => {
-                        console.log("message", message);
                         setSelectedMessage(message);
                         if (!message.read) {
                           markAsRead(message.id);
@@ -684,14 +381,6 @@ export function Inbox() {
                             </Badge>
                           )}
                         </div>
-                        {/* <div className="flex items-center gap-1 flex-shrink-0">
-                          <Badge 
-                            variant="outline" 
-                            className={`text-xs border ${getStatusColor(message.status)}`}
-                          >
-                            {message.status}
-                          </Badge>
-                        </div> */}
                       </div>
                       
                       <p 
@@ -725,16 +414,6 @@ export function Inbox() {
                     <MessageSquare className="h-5 w-5" />
                     Message Details
                   </CardTitle>
-                  {/* <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex items-center gap-2">
-                      <Reply className="h-4 w-4" />
-                      Reply
-                    </Button>
-                    <Button variant="outline" size="sm" className="flex items-center gap-2">
-                      <Archive className="h-4 w-4" />
-                      Archive
-                    </Button>
-                  </div> */}
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -745,12 +424,6 @@ export function Inbox() {
                       <div className="flex items-center gap-2 mb-3">
                         <User className="h-4 w-4 text-muted-foreground" />
                         <span className="font-medium">{selectedMessage.from}</span>
-                        {/* <Badge 
-                          variant={selectedMessage.direction === 'inbound' ? 'default' : 'secondary'}
-                          className="ml-2"
-                        >
-                          {selectedMessage.direction}
-                        </Badge> */}
                         {!selectedMessage.read && (
                           <Badge variant="default" className="bg-blue-500 text-white">
                             Unread
@@ -764,49 +437,13 @@ export function Inbox() {
                   </div>
                 </div>
 
-                {/* Message Metadata */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <Label className="text-muted-foreground text-xs">From</Label>
-                    <p className="font-medium mt-1">{selectedMessage.from}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs">To</Label>
-                    <p className="font-medium mt-1">{selectedMessage.to || 'N/A'}</p>
-                  </div>
-                  
-                  <div>
-                    <Label className="text-muted-foreground text-xs">Port & Slot</Label>
-                    <p className="font-medium mt-1">Port {selectedMessage.port}, Slot {selectedMessage.slot}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs">Date & Time</Label>
-                    <p className="font-medium mt-1">
-                      {new Date(selectedMessage.timestamp).toLocaleString()}
-                    </p>
-                  </div>
-                  {selectedMessage.isReport && (
-                    <div className="md:col-span-2">
-                      <Label className="text-muted-foreground text-xs">Report</Label>
-                      <p className="font-medium mt-1">Delivery Report</p>
-                    </div>
-                  )}
-                </div>
-
                 {/* Quick Actions */}
-                {/* <div className="flex gap-2 pt-4 border-t">
+                <div className="flex gap-2 pt-4 border-t">
                   <Button variant="outline" size="sm" className="flex-1 flex items-center gap-2">
                     <Reply className="h-4 w-4" />
                     Reply
                   </Button>
-                  <Button variant="outline" size="sm" className="flex-1 flex items-center gap-2">
-                    <Archive className="h-4 w-4" />
-                    Archive
-                  </Button>
-                  <Button variant="outline" size="sm" className="flex items-center gap-2">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div> */}
+                </div>
               </CardContent>
             </Card>
           ) : (

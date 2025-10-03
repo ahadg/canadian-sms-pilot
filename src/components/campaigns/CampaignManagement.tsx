@@ -47,6 +47,8 @@ import {
   Loader2,
   Download,
   X,
+  Wifi,
+  WifiOff
 } from "lucide-react";
 import { Device, useCampaigns } from "@/hooks/useCampaigns";
 import { toast } from "sonner";
@@ -55,7 +57,8 @@ import { useContactManagement } from "@/hooks/useContactManagement";
 import { messageAPI, MessageVariant } from "@/lib/api/messages";
 import { contactAPI } from "@/lib/api/contacts";
 import { Campaign } from "@/lib/api/campaign";
-import { useSocket } from "@/hooks/useSocket";
+import { useSocketStore } from "@/store/useSocketStore";
+import { cn } from "@/lib/utils";
 
 // Canadian SMS rules template
 const CANADIAN_SMS_TEMPLATE = `Your message here. Reply STOP to unsubscribe.`;
@@ -95,39 +98,53 @@ export function CampaignManagement() {
     createContactList,
     deleteContactList,
   } = useContactManagement();
-  //useMessage
-  console.log("campaigns",campaigns)
-  const { isConnected, campaignUpdates, leaveCampaignRoom } = useSocket();
+
+  // Use Zustand socket store
+  const { 
+    isConnected, 
+    campaignUpdates, 
+    socket 
+  } = useSocketStore();
 
   // Track real-time campaign data
   const [realTimeCampaigns, setRealTimeCampaigns] = useState<Campaign[]>(campaigns);
 
-    // Sync campaigns with real-time updates
-    useEffect(() => {
-      setRealTimeCampaigns(campaigns);
-    }, [campaigns]);
-
-      // Handle real-time campaign updates
+  // Sync campaigns with real-time updates
   useEffect(() => {
-    campaignUpdates.forEach(update => {
-      setCampaigns(prev => 
-        prev.map(campaign => 
-          campaign._id === update.campaignId 
-            ? { 
-                ...campaign, 
+    setRealTimeCampaigns(campaigns);
+  }, [campaigns]);
+
+  // Handle real-time campaign updates from socket
+  useEffect(() => {
+    if (campaignUpdates.length > 0) {
+      console.log('Processing campaign updates:', campaignUpdates);
+      
+      campaignUpdates.forEach(update => {
+        setCampaigns(prev => 
+          prev.map(campaign => {
+            if (campaign._id === update.campaignId) {
+              const updatedCampaign = {
+                ...campaign,
                 ...update.updates,
                 // Calculate delivery rate in real-time
                 deliveryRate: update.updates.sentMessages > 0 
                   ? (update.updates.deliveredMessages / update.updates.sentMessages) * 100 
-                  : 0
-              } as Campaign
-            : campaign as Campaign
-        ) as Campaign[]
-      );
-    });
-  }, [campaignUpdates]);
+                  : 0,
+                // Update status if provided
+                status: update.updates.status || campaign.status
+              };
+              
+              console.log(`Updated campaign ${campaign._id}:`, updatedCampaign);
+              return updatedCampaign;
+            }
+            return campaign;
+          }) as Campaign[]
+        );
+      });
+    }
+  }, [campaignUpdates, setCampaigns]);
 
-  
+
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [selectedContactListId, setSelectedContactListId] = useState<string | null>(null);
   const [isCreateCampaignOpen, setIsCreateCampaignOpen] = useState(false);
@@ -184,9 +201,8 @@ export function CampaignManagement() {
 
     setLoadingVariants(true);
     try {
-      // You'll need to implement this API endpoint
       const response = await messageAPI.getVariants(messageId);
-      console.log("MessageVariants_response",response)
+      console.log("MessageVariants_response", response);
       const variants = response.data.variants || [];
 
       setMessageVariants(variants);
@@ -240,12 +256,23 @@ export function CampaignManagement() {
 
   // Start campaign handler
   const handleStartCampaign = async (campaign: any) => {
+    if (!isConnected) {
+      toast.error('Cannot start campaign: WebSocket not connected');
+      return;
+    }
+
     setIsSending(true);
     try {
-      console.log("campaign",campaign)
-      console.log("the_device",devices)
+      console.log("campaign", campaign);
+      console.log("the_device", devices);
       const the_device = devices?.find(d => d._id === campaign.device?._id);
-      console.log("the_device",the_device)
+      console.log("the_device", the_device);
+      
+      if (!the_device) {
+        toast.error('Selected device not found');
+        return;
+      }
+
       const deviceConfig = {
         device_ip: the_device?.ipAddress,
         device_port: the_device?.port,
@@ -256,15 +283,18 @@ export function CampaignManagement() {
       };
 
       await startCampaign(campaign._id, deviceConfig.device);
+      
+      
       setShowSendDialog(false);
+      toast.success('Campaign started successfully');
     } catch (error) {
       console.error('Error starting campaign:', error);
+      toast.error('Failed to start campaign');
     } finally {
       setIsSending(false);
     }
   };
 
-  
   // Create campaign handler
   const handleCreateCampaign = async () => {
     if (!campaignForm.name || !campaignForm.message_content || !campaignForm.device) {
@@ -272,10 +302,11 @@ export function CampaignManagement() {
       return;
     }
    
-    const { data : contacts_lists , error: contactsError } = await contactAPI.getListById(campaignForm.contactList)
-    console.log("contacts_lists",campaignForm.contactList,contacts_lists)
+    const { data: contacts_lists, error: contactsError } = await contactAPI.getListById(campaignForm.contactList);
+    console.log("contacts_lists", campaignForm.contactList, contacts_lists);
+    
     try {
-      await createCampaign({
+      const newCampaign = await createCampaign({
         name: campaignForm.name,
         messageContent: campaignForm.message_content,
         contactList: campaignForm.contactList || undefined,
@@ -288,6 +319,8 @@ export function CampaignManagement() {
         deliveredMessages: 0,
         failedMessages: 0
       });
+      
+      
       
       setIsCreateCampaignOpen(false);
       // Reset form
@@ -307,6 +340,7 @@ export function CampaignManagement() {
       toast.success('Campaign created successfully');
     } catch (error) {
       console.error('Error creating campaign:', error);
+      toast.error('Failed to create campaign');
     }
   };
 
@@ -322,8 +356,10 @@ export function CampaignManagement() {
       await contactAPI.createList({ name: contactListName });
       setIsCreateContactListOpen(false);
       setContactListName('');
+      toast.success('Contact list created successfully');
     } catch (error) {
       console.error('Error creating contact list:', error);
+      toast.error('Failed to create contact list');
     }
   };
 
@@ -349,94 +385,125 @@ export function CampaignManagement() {
     return (campaign?.deliveredMessages / campaign?.sentMessages) * 100;
   };
 
-  // Campaign actions renderer
-  // Enhanced campaign actions renderer
-const renderCampaignActions = (campaign: Campaign) => {
-  const handlePause = async (campaign: Campaign) => {
-    console.log("campaign",campaign)
-    try {
-      await pauseCampaignTasks(campaign.device, [campaign.taskId]);
-      await updateCampaignStatus(campaign._id, 'paused');
-    } catch (error) {
-      console.error('Error pausing campaign:', error);
-    }
-  };
+  // Enhanced campaign actions renderer with socket integration
+  const renderCampaignActions = (campaign: Campaign) => {
+    const handlePause = async (campaign: Campaign) => {
+      if (!isConnected) {
+        toast.error('Cannot pause campaign: WebSocket not connected');
+        return;
+      }
 
-  const handleResume = async (campaign: Campaign) => {
-    try {
-      await resumeCampaignTasks(campaign.device, [campaign.taskId]);
-      await updateCampaignStatus(campaign._id, 'active');
-    } catch (error) {
-      console.error('Error resuming campaign:', error);
-    }
-  };
+      console.log("campaign", campaign);
+      try {
+        await pauseCampaignTasks(campaign.device, [campaign.taskId]);
+        await updateCampaignStatus(campaign._id, 'paused');
+        toast.success('Campaign paused');
+      } catch (error) {
+        console.error('Error pausing campaign:', error);
+        toast.error('Failed to pause campaign');
+      }
+    };
 
-  const handleStop = async (campaign: Campaign) => {
-    try {
-      await removeCampaignTasks(campaign.device, [campaign.taskId]);
-      await updateCampaignStatus(campaign._id, 'completed');
-    } catch (error) {
-      console.error('Error stopping campaign:', error);
-    }
-  };
+    const handleResume = async (campaign: Campaign) => {
+      if (!isConnected) {
+        toast.error('Cannot resume campaign: WebSocket not connected');
+        return;
+      }
 
-  return (
-    <div className="flex gap-1">
-      {campaign?.status === "scheduled" && (
-        <Button 
-          variant="ghost" 
-          size="sm"
-          onClick={() => {
-            setSelectedCampaign(campaign);
-            setShowSendDialog(true);
-          }}
-          disabled={isSending}
-        >
-          <Send className="h-3 w-3" />
+      try {
+        await resumeCampaignTasks(campaign.device, [campaign.taskId]);
+        await updateCampaignStatus(campaign._id, 'active');
+        toast.success('Campaign resumed');
+      } catch (error) {
+        console.error('Error resuming campaign:', error);
+        toast.error('Failed to resume campaign');
+      }
+    };
+
+    const handleStop = async (campaign: Campaign) => {
+      if (!isConnected) {
+        toast.error('Cannot stop campaign: WebSocket not connected');
+        return;
+      }
+
+      try {
+        await removeCampaignTasks(campaign.device, [campaign.taskId]);
+        await updateCampaignStatus(campaign._id, 'completed');
+   
+        
+        toast.success('Campaign stopped');
+      } catch (error) {
+        console.error('Error stopping campaign:', error);
+        toast.error('Failed to stop campaign');
+      }
+    };
+
+    return (
+      <div className="flex gap-1">
+        {campaign?.status === "scheduled" && (
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => {
+              setSelectedCampaign(campaign);
+              setShowSendDialog(true);
+            }}
+            disabled={isSending || !isConnected}
+            title={!isConnected ? "WebSocket not connected" : "Start campaign"}
+          >
+            <Send className="h-3 w-3" />
+          </Button>
+        )}
+        {campaign?.status === "active" && (
+          <>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => handlePause(campaign)}
+              disabled={!isConnected}
+              title={!isConnected ? "WebSocket not connected" : "Pause campaign"}
+            >
+              <Pause className="h-3 w-3" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => handleStop(campaign)}
+              disabled={!isConnected}
+              title={!isConnected ? "WebSocket not connected" : "Stop campaign"}
+            >
+              <Square className="h-3 w-3" />
+            </Button>
+          </>
+        )}
+        {campaign?.status === "paused" && (
+          <>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => handleResume(campaign)}
+              disabled={!isConnected}
+              title={!isConnected ? "WebSocket not connected" : "Resume campaign"}
+            >
+              <Play className="h-3 w-3" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => handleStop(campaign)}
+              disabled={!isConnected}
+              title={!isConnected ? "WebSocket not connected" : "Stop campaign"}
+            >
+              <Square className="h-3 w-3" />
+            </Button>
+          </>
+        )}
+        <Button variant="ghost" size="sm">
+          <Eye className="h-3 w-3" />
         </Button>
-      )}
-      {campaign?.status === "active" && (
-        <>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => handlePause(campaign)}
-          >
-            <Pause className="h-3 w-3" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => handleStop(campaign)}
-          >
-            <Square className="h-3 w-3" />
-          </Button>
-        </>
-      )}
-      {campaign?.status === "paused" && (
-        <>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => handleResume(campaign)}
-          >
-            <Play className="h-3 w-3" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => handleStop(campaign)}
-          >
-            <Square className="h-3 w-3" />
-          </Button>
-        </>
-      )}
-      <Button variant="ghost" size="sm">
-        <Eye className="h-3 w-3" />
-      </Button>
-    </div>
-  );
-};
+      </div>
+    );
+  };
 
   // Send dialog component
   const renderSendDialog = () => (
@@ -446,6 +513,12 @@ const renderCampaignActions = (campaign: Campaign) => {
           <DialogTitle>Send Campaign</DialogTitle>
           <DialogDescription>
             Send "{selectedCampaign?.name}" campaign
+            {!isConnected && (
+              <div className="flex items-center gap-2 mt-2 text-amber-600 text-sm">
+                <WifiOff className="h-4 w-4" />
+                WebSocket not connected - real-time updates unavailable
+              </div>
+            )}
           </DialogDescription>
         </DialogHeader>
         
@@ -460,14 +533,14 @@ const renderCampaignActions = (campaign: Campaign) => {
           <Button 
             className="flex-1" 
             onClick={() => selectedCampaign && handleStartCampaign(selectedCampaign)}
-            disabled={isSending}
+            disabled={isSending || !isConnected}
           >
             {isSending ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
             ) : (
               <Send className="h-4 w-4 mr-2" />
             )}
-            Send Campaign
+            {!isConnected ? 'Connecting...' : 'Send Campaign'}
           </Button>
         </div>
       </DialogContent>
