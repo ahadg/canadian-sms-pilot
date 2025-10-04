@@ -23,6 +23,17 @@ export interface ReceivedSMS {
   };
 }
 
+interface Conversation {
+  phoneNumber: string;
+  port: number;
+  slot: number;
+  lastMessage: string;
+  lastTimestamp: string;
+  unreadCount: number;
+  messageCount: number;
+  simId: string;
+}
+
 export interface InboxFilters {
   search: string;
   status: string;
@@ -41,7 +52,8 @@ interface MessagesState {
   filters: InboxFilters;
   devices: Device[];
   selectedDevice: Device | null;
-  
+  conversations: Conversation[];
+  currentConversation: Conversation | null;
   // Actions
   setMessages: (messages: ReceivedSMS[]) => void;
   setFilteredMessages: (messages: ReceivedSMS[]) => void;
@@ -52,7 +64,11 @@ interface MessagesState {
   updateFilter: (key: keyof InboxFilters, value: string) => void;
   setDevices: (devices: Device[]) => void;
   setSelectedDevice: (device: Device | null) => void;
-  
+  setConversations: (conversations: Conversation[]) => void;
+  setCurrentConversation: (conversation: Conversation | null) => void;
+  sendSMS: (params: SendSMSParams) => Promise<void>;
+  fetchConversations: (deviceId: string) => Promise<void>;
+  fetchConversation: (phoneNumber: string, port: number, slot: number, deviceId: string) => Promise<void>;
   // Async Actions
   fetchDevices: () => Promise<void>;
   syncMessagesFromDevice: (deviceId: string) => Promise<void>;
@@ -70,6 +86,25 @@ const initialFilters: InboxFilters = {
   dateTo: ''
 };
 
+
+interface SendSMSParams {
+  deviceId: string;
+  port: number;
+  slot: number;
+  to: string;
+  sms: string;
+}
+
+interface Conversation {
+  phoneNumber: string;
+  port: number;
+  slot: number;
+  lastMessage: string;
+  lastTimestamp: string;
+  unreadCount: number;
+  messages: ReceivedSMS[];
+}
+
 export const useMessagesStore = create<MessagesState>()(
   persist(
     (set, get) => ({
@@ -82,6 +117,8 @@ export const useMessagesStore = create<MessagesState>()(
       filters: initialFilters,
       devices: [],
       selectedDevice: null,
+      conversations: [],
+      currentConversation: null,
 
       // Sync State Actions
       setMessages: (messages) => set({ messages }),
@@ -92,7 +129,8 @@ export const useMessagesStore = create<MessagesState>()(
       setFilters: (filters) => set({ filters }),
       setDevices: (devices) => set({ devices }),
       setSelectedDevice: (selectedDevice) => set({ selectedDevice }),
-
+      setConversations: (conversations) => set({ conversations }),
+      setCurrentConversation: (currentConversation) => set({ currentConversation }),
       // Filter Actions
       updateFilter: (key, value) => {
         const { filters } = get();
@@ -104,6 +142,170 @@ export const useMessagesStore = create<MessagesState>()(
         set({ filters: initialFilters });
       },
 
+      fetchConversations: async (deviceId: string) => {
+        try {
+          const response = await authFetch(`/api/sms/conversations?deviceId=${deviceId}`);
+          console.log("fetchConversations_response",response)
+          if (response.code !== 200) {
+            throw new Error('Failed to fetch conversations');
+          }
+
+          set({ conversations: response.data.conversations || [] });
+          
+        } catch (error) {
+          console.error('Failed to fetch conversations:', error);
+          toast.error('Failed to load conversations');
+        }
+      },
+
+      fetchConversation: async (phoneNumber: string, port: number, slot: number, deviceId: string) => {
+        try {
+          const response = await authFetch(
+            `/api/sms/conversation?phoneNumber=${phoneNumber}&port=${port}&slot=${slot}&deviceId=${deviceId}`
+          );
+          console.log("fetchConversation",response)
+          if (response.code !== 200) {
+            throw new Error('Failed to fetch conversation');
+          }
+
+          const conversation: Conversation = {
+            phoneNumber,
+            port,
+            slot,
+            lastMessage: response.data.messages[response.data.messages.length - 1]?.sms || '',
+            lastTimestamp: response.data.messages[response.data.messages.length - 1]?.timestamp || '',
+            unreadCount: 0, // All messages are marked as read when fetched
+            messageCount: response.data.messages.length,
+            simId: '', // This would come from backend
+            messages: response.data.messages
+          };
+
+          set({ currentConversation: conversation });
+          
+        } catch (error) {
+          console.error('Failed to fetch conversation:', error);
+          toast.error('Failed to load conversation');
+        }
+      },
+
+      sendSMS: async (params: SendSMSParams) => {
+        const { deviceId, port, slot, to, sms } = params;
+        
+        set({ isLoading: true });
+        try {
+          const response = await authFetch('/api/sms/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            data: JSON.stringify({
+              deviceId,
+              port,
+              slot,
+              to,
+              sms
+            })
+          });
+
+          if (!response.success) {
+            throw new Error('Failed to send SMS');
+          }
+
+          toast.success('SMS sent successfully');
+          
+          // Refresh conversations and current conversation
+          const { selectedDevice, fetchConversations, currentConversation, fetchConversation } = get();
+          if (selectedDevice) {
+            await fetchConversations(selectedDevice._id);
+            
+            // Refresh current conversation if it's the same recipient
+            if (currentConversation && currentConversation.phoneNumber === to) {
+              await fetchConversation(to, port, slot, selectedDevice._id);
+            }
+          }
+          
+        } catch (error) {
+          console.error('Failed to send SMS:', error);
+          toast.error('Failed to send SMS');
+          throw error;
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      markAsRead: async (messageId: string) => {
+        try {
+          // Update local state immediately for better UX
+          const { messages, selectedMessage, currentConversation } = get();
+          
+          const updatedMessages = messages.map(msg => 
+            msg.id === messageId ? { ...msg, read: true } : msg
+          );
+          
+          const updatedSelectedMessage = selectedMessage?.id === messageId 
+            ? { ...selectedMessage, read: true } 
+            : selectedMessage;
+
+          // Update current conversation if the message is in it
+          let updatedCurrentConversation = currentConversation;
+          if (currentConversation && currentConversation.messages.some(msg => msg.id === messageId)) {
+            updatedCurrentConversation = {
+              ...currentConversation,
+              messages: currentConversation.messages.map(msg =>
+                msg.id === messageId ? { ...msg, read: true } : msg
+              ),
+              unreadCount: Math.max(0, currentConversation.unreadCount - 1)
+            };
+          }
+
+          set({ 
+            messages: updatedMessages,
+            selectedMessage: updatedSelectedMessage,
+            currentConversation: updatedCurrentConversation
+          });
+          
+          // Send API request to mark as read
+          await authFetch(`/api/sms/markAsRead/${messageId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
+        } catch (error) {
+          console.error('Failed to mark as read:', error);
+          toast.error('Failed to mark message as read');
+        }
+      },
+
+      // Update other methods to use deviceId parameter
+      loadMessages: async () => {
+        set({ isLoading: true });
+        try {
+          const { selectedDevice, fetchConversations } = get();
+          
+          if (!selectedDevice) {
+            throw new Error('No device selected');
+          }
+
+          // First try to get messages from the API
+          const apiResponse = await authFetch(`/api/sms?deviceId=${selectedDevice._id}&limit=1000`);
+          
+          if (apiResponse && apiResponse.success) {
+            const messagesData = apiResponse.data.messages || [];
+            set({ messages: messagesData });
+            
+            // Fetch conversations after loading messages
+            await fetchConversations(selectedDevice._id);
+          }
+          
+        } catch (error) {
+          console.error('Failed to load messages:', error);
+          toast.error('Failed to load messages');
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+     
       filterMessages: (activeTab) => {
         const { messages, filters } = get();
         let filtered = [...messages];
@@ -209,81 +411,6 @@ export const useMessagesStore = create<MessagesState>()(
         }
       },
 
-      loadMessages: async () => {
-        set({ isLoading: true });
-        try {
-          const { selectedDevice, syncMessagesFromDevice } = get();
-          
-          // First try to get messages from the API
-          let messagesData: ReceivedSMS[] = [];
-          
-          try {
-            const apiResponse = await authFetch('/api/sms');
-            console.log("apiResponse",apiResponse)
-            if (apiResponse) {
-              const apiData = apiResponse.data;
-              messagesData = apiData.messages || apiData.smses || [];
-              
-              // If no messages found in API, try to sync from device
-              if (messagesData.length === 0 && selectedDevice) {
-                toast.info('No messages found in database, syncing from device...');
-                await syncMessagesFromDevice(selectedDevice._id);
-                return; // Exit early as sync will trigger reload
-              }
-            }
-          } catch (apiError) {
-            console.warn('Failed to fetch messages from API, trying device sync:', apiError);
-            
-            // If API fails, try to get messages directly from device
-            if (selectedDevice) {
-              toast.info('Fetching messages directly from device...');
-              await syncMessagesFromDevice(selectedDevice._id);
-              return; // Exit early as sync will trigger reload
-            }
-          }
-
-          // If we have messages from API, set them
-          if (messagesData.length > 0) {
-            set({ messages: messagesData });
-          }
-          
-        } catch (error) {
-          console.error('Failed to load messages:', error);
-          toast.error('Failed to load messages');
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-
-      markAsRead: async (messageId: string) => {
-        try {
-          const { messages, selectedMessage } = get();
-          
-          const updatedMessages = messages.map(msg => 
-            msg.id === messageId ? { ...msg, read: true } : msg
-          );
-          
-          const updatedSelectedMessage = selectedMessage?.id === messageId 
-            ? { ...selectedMessage, read: true } 
-            : selectedMessage;
-
-          set({ 
-            messages: updatedMessages,
-            selectedMessage: updatedSelectedMessage
-          });
-          
-          // Optional: Send API request to mark as read
-          await authFetch(`/api/sms/markAsRead/${messageId}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            }
-          });
-        } catch (error) {
-          console.error('Failed to mark as read:', error);
-          toast.error('Failed to mark message as read');
-        }
-      },
     }),
     {
       name: 'messages-storage',

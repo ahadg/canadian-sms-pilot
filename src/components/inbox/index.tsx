@@ -5,26 +5,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   Search,
   Filter,
-  Download,
   RefreshCw,
   MessageSquare,
   User,
-  MoreVertical,
   Reply,
-  Archive,
-  Trash2,
-  Eye,
   MailPlus,
   Send,
-  FolderSync
+  FolderSync,
+  ArrowLeft,
+  Phone,
+  PhoneIcon
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
-import { useMessagesStore, decodeBase64 } from "@/store/useMessagesStore";
+import { useMessagesStore, decodeBase64, ReceivedSMS } from "@/store/useMessagesStore";
 import { toast } from "sonner";
-import { deviceAPI } from "@/lib/api";
 
 const STATUS_OPTIONS = ['all', 'delivered', 'read', 'replied', 'failed'];
 const DIRECTION_OPTIONS = ['all', 'inbound', 'outbound'];
@@ -32,27 +30,31 @@ const DIRECTION_OPTIONS = ['all', 'inbound', 'outbound'];
 export function Inbox() {
   const [activeTab, setActiveTab] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [replyText, setReplyText] = useState('');
   const { isAuthenticated } = useAuthStore();
   
   // Zustand store
   const {
     messages,
     filteredMessages,
-    selectedMessage,
+    conversations,
+    currentConversation,
     isLoading,
     isSyncing,
     filters,
     devices,
     selectedDevice,
-    setSelectedMessage,
     setSelectedDevice,
+    fetchDevices,
     updateFilter,
     clearFilters,
     filterMessages,
-    fetchDevices,
     syncMessagesFromDevice,
     loadMessages,
-    markAsRead
+    markAsRead,
+    sendSMS,
+    fetchConversations,
+    fetchConversation
   } = useMessagesStore();
 
   // Manual sync handler
@@ -62,6 +64,59 @@ export function Inbox() {
       return;
     }
     await syncMessagesFromDevice(selectedDevice._id);
+  };
+
+  // Conversation reply handler
+  const handleConversationReply = async () => {
+    if (!currentConversation || !replyText.trim() || !selectedDevice) {
+      toast.error('Please enter a message to send');
+      return;
+    }
+
+    try {
+      await sendSMS({
+        deviceId: selectedDevice._id,
+        port: currentConversation.port,
+        slot: currentConversation.slot,
+        to: currentConversation.phoneNumber,
+        sms: replyText.trim()
+      });
+      
+      setReplyText('');
+      toast.success('Message sent successfully');
+    } catch (error) {
+      // Error is handled in the store
+    }
+  };
+
+  const handleConversationClick = async (conversation: any) => {
+    if (!selectedDevice) return;
+    
+    await fetchConversation(
+      conversation.phoneNumber, 
+      conversation.port, 
+      conversation.slot, 
+      selectedDevice._id
+    );
+  };
+
+
+  // Message click handler - always opens conversation
+  const handleMessageClick = async (message: ReceivedSMS) => {
+    if (!selectedDevice) return;
+    
+    // Open conversation for this message
+    await fetchConversation(
+      message.from, 
+      message.port, 
+      message.slot, 
+      selectedDevice._id
+    );
+    
+    // Mark as read if it's inbound and unread
+    if (!message.read && message.direction === 'inbound') {
+      await markAsRead(message.id);
+    }
   };
 
   // Effects
@@ -75,11 +130,17 @@ export function Inbox() {
     if (isAuthenticated && selectedDevice) {
       loadMessages();
     }
-  }, [isAuthenticated, selectedDevice]);
+  }, [isAuthenticated, selectedDevice, loadMessages]);
 
   useEffect(() => {
     filterMessages(activeTab);
   }, [messages, filters, activeTab, filterMessages]);
+
+  useEffect(() => {
+    if (isAuthenticated && selectedDevice && messages.length > 0) {
+      fetchConversations(selectedDevice._id);
+    }
+  }, [isAuthenticated, selectedDevice, messages, fetchConversations]);
 
   // UI Helper Functions
   const getDirectionIcon = (direction: string) => {
@@ -103,14 +164,11 @@ export function Inbox() {
     return date.toLocaleDateString();
   };
 
-  const getStatusColor = (status: string): string => {
-    const colors = {
-      delivered: 'border-green-500 text-green-700 bg-green-50',
-      read: 'border-blue-500 text-blue-700 bg-blue-50',
-      replied: 'border-purple-500 text-purple-700 bg-purple-50',
-      failed: 'border-red-500 text-red-700 bg-red-50',
-    };
-    return colors[status as keyof typeof colors] || 'border-gray-500 text-gray-700 bg-gray-50';
+  const formatTime = (timestamp: string): string => {
+    return new Date(timestamp).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   if (!isAuthenticated) {
@@ -129,6 +187,7 @@ export function Inbox() {
 
   return (
     <div className="flex-1 space-y-6 p-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">SMS Inbox</h1>
@@ -304,15 +363,15 @@ export function Inbox() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Messages List */}
+        {/* Conversations List */}
         <div className="lg:col-span-1 space-y-4">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
-                Messages
+                Conversations
                 <Badge variant="secondary" className="ml-2">
-                  {filteredMessages.length}
+                  {conversations.length}
                 </Badge>
               </CardTitle>
             </CardHeader>
@@ -332,12 +391,10 @@ export function Inbox() {
                     <RefreshCw className="h-8 w-8 mx-auto animate-spin text-muted-foreground" />
                     <p className="text-sm text-muted-foreground mt-2">Loading messages...</p>
                   </div>
-                ) : filteredMessages.length === 0 ? (
+                ) : conversations.length === 0 ? (
                   <div className="p-8 text-center">
                     <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground mt-2">
-                      {messages.length === 0 ? 'No messages found' : 'No messages match your filters'}
-                    </p>
+                    <p className="text-sm text-muted-foreground mt-2">No conversations found</p>
                     {messages.length === 0 && selectedDevice && (
                       <Button 
                         variant="outline" 
@@ -349,52 +406,50 @@ export function Inbox() {
                         {isSyncing ? 'Syncing...' : 'Sync from Device'}
                       </Button>
                     )}
-                    {messages.length > 0 && (
-                      <Button variant="outline" size="sm" onClick={clearFilters} className="mt-2">
-                        Clear filters
-                      </Button>
-                    )}
                   </div>
                 ) : (
-                  filteredMessages.map((message) => (
+                  conversations.map((conversation) => (
                     <div
-                      key={message.id}
+                      key={`${conversation.phoneNumber}-${conversation.port}-${conversation.slot}`}
                       className={`p-4 border-b cursor-pointer hover:bg-muted/50 transition-colors ${
-                        selectedMessage?.id === message.id ? 'bg-muted border-l-4 border-l-primary' : ''
-                      } ${!message.read ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
+                        currentConversation?.phoneNumber === conversation.phoneNumber && 
+                        currentConversation?.port === conversation.port && 
+                        currentConversation?.slot === conversation.slot ? 
+                        'bg-muted border-l-4 border-l-primary' : ''
+                      } ${conversation.unreadCount > 0 ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
                       onClick={() => {
-                        setSelectedMessage(message);
-                        if (!message.read) {
-                          markAsRead(message.id);
-                        }
+                        handleConversationClick(conversation)
+                        console.log("conversation",conversation)
+                        //handleMessageClick(conversation.messages[conversation.messages.length - 1])
                       }}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                          {getDirectionIcon(message.direction)}
-                          <span className="font-medium text-sm truncate" title={message.from}>
-                            {message.from || 'Unknown'}
+                          <User className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium text-sm truncate" title={conversation.phoneNumber}>
+                            {conversation.phoneNumber || 'Unknown'}
                           </span>
-                          {!message.read && (
+                          {conversation.unreadCount > 0 && (
                             <Badge variant="default" className="bg-blue-500 text-white text-xs px-1 py-0">
-                              New
+                              {conversation.unreadCount}
                             </Badge>
                           )}
                         </div>
+                        <span className="text-xs text-muted-foreground flex-shrink-0">
+                          {formatDate(conversation.lastTimestamp)}
+                        </span>
                       </div>
                       
                       <p 
                         className="text-sm text-muted-foreground line-clamp-2 mb-2 break-words"
-                        title={decodeBase64(message.sms)}
+                        title={decodeBase64(conversation.lastMessage)}
                       >
-                        {decodeBase64(message.sms)}
+                        {decodeBase64(conversation.lastMessage)}
                       </p>
                       
-                      <div className="flex justify-between items-center text-xs text-muted-foreground">
-                        <span className="truncate flex-1 mr-2" title={`Port: ${message.port}, Slot: ${message.slot}`}>
-                          Port {message.port}-{message.slot}
-                        </span>
-                        <span className="flex-shrink-0">{formatDate(message.timestamp)}</span>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <PhoneIcon className="h-3 w-3" />
+                        <span>Port {conversation.port}-{conversation.slot}</span>
                       </div>
                     </div>
                   ))
@@ -404,64 +459,152 @@ export function Inbox() {
           </Card>
         </div>
 
-        {/* Message Detail */}
+        {/* Conversation View */}
         <div className="lg:col-span-2">
-          {selectedMessage ? (
-            <Card>
-              <CardHeader>
+          {currentConversation ? (
+            <Card className="h-full flex flex-col">
+              <CardHeader className="pb-4 border-b">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2 text-xl">
-                    <MessageSquare className="h-5 w-5" />
-                    Message Details
-                  </CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Message Content */}
-                <div className="bg-muted/50 p-4 rounded-lg border">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-3">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{selectedMessage.from}</span>
-                        {!selectedMessage.read && (
-                          <Badge variant="default" className="bg-blue-500 text-white">
-                            Unread
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm whitespace-pre-wrap break-words bg-background p-3 rounded border">
-                        {decodeBase64(selectedMessage.sms)}
-                      </p>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <User className="h-5 w-5 text-muted-foreground" />
+                      <CardTitle className="text-xl">
+                        {currentConversation.phoneNumber || 'Unknown Number'}
+                      </CardTitle>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="flex items-center gap-1">
+                        <PhoneIcon className="h-3 w-3" />
+                        Port {currentConversation.port}-{currentConversation.slot}
+                      </Badge>
+                      {currentConversation.unreadCount > 0 && (
+                        <Badge variant="default" className="bg-blue-500 text-white">
+                          {currentConversation.unreadCount} unread
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
+              </CardHeader>
 
-                {/* Quick Actions */}
-                <div className="flex gap-2 pt-4 border-t">
-                  <Button variant="outline" size="sm" className="flex-1 flex items-center gap-2">
-                    <Reply className="h-4 w-4" />
-                    Reply
-                  </Button>
+              <CardContent className="flex-1 flex flex-col p-0">
+                {/* Conversation Messages */}
+                <div className="flex-1 p-4 space-y-4 overflow-y-auto max-h-[500px]">
+                  {currentConversation.messages.length === 0 ? (
+                    <div className="text-center text-muted-foreground py-8">
+                      <MessageSquare className="h-12 w-12 mx-auto mb-2" />
+                      <p>No messages in this conversation</p>
+                    </div>
+                  ) : (
+                    currentConversation.messages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`flex gap-3 ${
+                          message.direction === 'outbound' ? 'justify-end' : 'justify-start'
+                        }`}
+                      >
+                        <div
+                          className={`max-w-[80%] rounded-2xl p-4 ${
+                            message.direction === 'outbound'
+                              ? 'bg-blue-500 text-white rounded-br-none'
+                              : 'bg-gray-100 text-gray-900 rounded-bl-none'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            {message.direction === 'inbound' && (
+                              <User className="h-3 w-3" />
+                            )}
+                            <span className="text-xs opacity-75">
+                              {message.direction === 'outbound' ? 'You' : message.from}
+                            </span>
+                            <span className="text-xs opacity-60">
+                              {formatTime(message.timestamp)}
+                            </span>
+                            {!message.read && message.direction === 'inbound' && (
+                              <Badge variant="default" className="bg-orange-500 text-white text-xs px-1 py-0">
+                                New
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm whitespace-pre-wrap break-words">
+                            {decodeBase64(message.sms)}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Reply Box */}
+                <div className="border-t p-4 bg-muted/20">
+                  <div className="space-y-3">
+                    <Label htmlFor="conversation-reply" className="text-sm font-medium">
+                      Reply to {currentConversation.phoneNumber}
+                    </Label>
+                    <div className="flex gap-2">
+                      <Textarea
+                        id="conversation-reply"
+                        placeholder="Type your message..."
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        rows={3}
+                        className="resize-none flex-1"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleConversationReply();
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <div className="text-xs text-muted-foreground">
+                        Press Enter to send, Shift+Enter for new line
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline"
+                          onClick={() => setReplyText('')}
+                          disabled={!replyText.trim()}
+                          size="sm"
+                        >
+                          Clear
+                        </Button>
+                        <Button 
+                          onClick={handleConversationReply}
+                          disabled={!replyText.trim() || !selectedDevice}
+                          size="sm"
+                          className="flex items-center gap-2"
+                        >
+                          <Send className="h-4 w-4" />
+                          Send
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           ) : (
-            <Card>
+            <Card className="h-full flex items-center justify-center">
               <CardContent className="p-8 text-center">
-                <Eye className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-semibold mb-2">Select a Message</h3>
-                <p className="text-muted-foreground">
-                  Choose a message from the list to view its details and take actions
+                <MessageSquare className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="text-lg font-semibold mb-2">Select a Conversation</h3>
+                <p className="text-muted-foreground mb-4">
+                  Choose a conversation from the list to start messaging
                 </p>
                 {messages.length === 0 && selectedDevice && (
                   <Button 
                     variant="outline" 
-                    size="sm" 
                     onClick={handleManualSync} 
-                    className="mt-4"
                     disabled={isSyncing}
+                    className="flex items-center gap-2"
                   >
+                    {isSyncing ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FolderSync className="h-4 w-4" />
+                    )}
                     {isSyncing ? 'Syncing...' : 'Sync Messages from Device'}
                   </Button>
                 )}
