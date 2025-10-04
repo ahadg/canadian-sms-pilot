@@ -26,14 +26,14 @@ export function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
+          {/* <Button variant="outline" size="sm">
             <BarChart3 className="h-4 w-4 mr-2" />
             Export Report
           </Button>
           <Button size="sm" className="bg-gradient-primary shadow-primary">
             <Plus className="h-4 w-4 mr-2" />
             New Campaign
-          </Button>
+          </Button> */}
         </div>
       </div>
 
@@ -141,36 +141,7 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Recent Activity */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 text-sm">
-              <div className="h-2 w-2 bg-success rounded-full animate-pulse-slow"></div>
-              <span className="text-muted-foreground">2 minutes ago</span>
-              <span>Campaign "Black Friday Promo" sent 156 messages successfully</span>
-            </div>
-            <div className="flex items-center gap-3 text-sm">
-              <div className="h-2 w-2 bg-info rounded-full"></div>
-              <span className="text-muted-foreground">5 minutes ago</span>
-              <span>Device "Ejoin Gateway 002" warning: High SIM usage detected</span>
-            </div>
-            <div className="flex items-center gap-3 text-sm">
-              <div className="h-2 w-2 bg-primary rounded-full"></div>
-              <span className="text-muted-foreground">12 minutes ago</span>
-              <span>New AI message variations generated for "Product Update" campaign</span>
-            </div>
-            <div className="flex items-center gap-3 text-sm">
-              <div className="h-2 w-2 bg-warning rounded-full"></div>
-              <span className="text-muted-foreground">18 minutes ago</span>
-              <span>156 SIM cards rotated to prevent carrier blocking</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+ 
     </div>
   );
 }

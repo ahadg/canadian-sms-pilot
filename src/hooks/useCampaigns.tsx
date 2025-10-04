@@ -166,7 +166,7 @@ export function useCampaigns() {
       // In your sendCampaignSms function, update the task object:
       const task = {
         id: Number(`${Date.now()}${Math.floor(Math.random() * 1000)}`),
-        from: 1,
+        from: "",
         sms: campaign.messageContent,
         interval_min: campaign.taskSettings?.interval_min || 30000,
         interval_max: campaign.taskSettings?.interval_max || 50000,
@@ -177,7 +177,7 @@ export function useCampaigns() {
         sdr: campaign.taskSettings?.sdr !== false, // Default to true if not specified
         fdr: campaign.taskSettings?.fdr !== false,
         dr: campaign.taskSettings?.dr !== false,
-        to_all: campaign.taskSettings?.to_all || false,
+        to_all: campaign.taskSettings?.to_all || true,
         flash_sms: campaign.taskSettings?.flash_sms || false,
         sms_count: campaign.taskSettings?.sms_count || 100,
         sms_period: campaign.taskSettings?.sms_period || 60,

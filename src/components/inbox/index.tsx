@@ -18,7 +18,8 @@ import {
   FolderSync,
   ArrowLeft,
   Phone,
-  PhoneIcon
+  PhoneIcon,
+  PhoneOffIcon
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useMessagesStore, decodeBase64, ReceivedSMS } from "@/store/useMessagesStore";
@@ -75,7 +76,7 @@ export function Inbox() {
 
     try {
       await sendSMS({
-        deviceId: selectedDevice._id,
+        device: selectedDevice,
         port: currentConversation.port,
         slot: currentConversation.slot,
         to: currentConversation.phoneNumber,
@@ -449,7 +450,10 @@ export function Inbox() {
                       
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <PhoneIcon className="h-3 w-3" />
+                        <div>
                         <span>Port {conversation.port}-{conversation.slot}</span>
+                        </div>
+                        {conversation.contact?.isReport && <PhoneOffIcon className="h-3 w-3" color="red" />}
                       </div>
                     </div>
                   ))
@@ -539,7 +543,7 @@ export function Inbox() {
                 <div className="border-t p-4 bg-muted/20">
                   <div className="space-y-3">
                     <Label htmlFor="conversation-reply" className="text-sm font-medium">
-                      Reply to {currentConversation.phoneNumber}
+                      Reply to {currentConversation.phoneNumber} {currentConversation?.contact?.isReport ? '(Report)' : ''}
                     </Label>
                     <div className="flex gap-2">
                       <Textarea

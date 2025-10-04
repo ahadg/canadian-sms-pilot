@@ -8,18 +8,18 @@ export const EjoinAPI = {
   // Submit new SMS tasks
   submitSmsTasks: async (device:any,tasks: {
     id: number;
-    from: number;
+    from?: number;
     sms: string;
-    interval_min: number;
-    interval_max: number;
-    timeout: number;
-    charset: string;
-    coding: number;
-    sms_type: number;
-    sdr: boolean;
-    fdr: boolean;
-    dr: boolean;
-    to_all: boolean;
+    interval_min?: number;
+    interval_max?: number;
+    timeout?: number;
+    charset?: string;
+    coding?: number;
+    sms_type?: number;
+    sdr?: boolean;
+    fdr?: boolean;
+    dr?: boolean;
+    to_all?: boolean;
     recipients: number[];
     attachments?: { type: string; content: string }[];
   }[]) => {

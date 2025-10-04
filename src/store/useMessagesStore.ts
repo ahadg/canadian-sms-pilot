@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { authFetch, deviceAPI } from '@/lib/api';
 import { toast } from 'sonner';
 import { Device } from '@/hooks/useCampaigns';
+import { EjoinAPI } from '@/lib/api/ejoin';
 
 // Interfaces
 export interface ReceivedSMS {
@@ -188,29 +189,43 @@ export const useMessagesStore = create<MessagesState>()(
         }
       },
 
-      sendSMS: async (params: SendSMSParams) => {
-        const { deviceId, port, slot, to, sms } = params;
+      sendSMS: async (params: any) => {
+        const { device, port, slot, to, sms } = params;
+        const tasks = [{
+          id: Number(`${Date.now()}${Math.floor(Math.random() * 1000)}`), 
+          from: port, 
+          recipients: [to], 
+          sms
+        }];
         
         set({ isLoading: true });
         try {
-          const response = await authFetch('/api/sms/send', {
+          // Step 1: Send SMS via device using EjoinAPI
+          const ejoinResponse = await EjoinAPI.submitSmsTasks(device, tasks);
+      
+          if (ejoinResponse?.[0]?.reason !== "OK") {
+            throw new Error('Failed to send SMS via device');
+          }
+      
+          // Step 2: Save to database via your backend API
+          const saveResponse = await authFetch('/api/sms/send', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             data: JSON.stringify({
-              deviceId,
+              deviceId: device._id,
               port,
               slot,
               to,
               sms
             })
           });
-
-          if (!response.success) {
-            throw new Error('Failed to send SMS');
+      
+          if (!saveResponse.success) {
+            throw new Error('Failed to save SMS to database');
           }
-
+      
           toast.success('SMS sent successfully');
           
           // Refresh conversations and current conversation
@@ -423,10 +438,23 @@ export const useMessagesStore = create<MessagesState>()(
   )
 );
 
-// Helper function (moved from utils)
 export const decodeBase64 = (str: string): string => {
   try {
-    return atob(str);
+    // 🔹 Check if input looks like base64 (letters/numbers + optional '=' padding)
+    const base64Regex = /^[A-Za-z0-9+/=]+$/;
+
+    if (str && str.length % 4 === 0 && base64Regex.test(str)) {
+      const decoded = atob(str);
+
+      // 🔹 Check if decoded text is mostly readable (English letters, numbers, spaces, punctuation)
+      const englishRegex = /^[\x20-\x7E\s]+$/;
+      if (englishRegex.test(decoded)) {
+        return decoded;
+      }
+    }
+
+    // Otherwise return original string
+    return str;
   } catch {
     return str;
   }
