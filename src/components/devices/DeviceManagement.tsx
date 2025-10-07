@@ -483,21 +483,24 @@ export function DeviceManagement() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="space-y-1">
                   <span className="text-xs text-muted-foreground">IP Address</span>
-                  <div className="font-mono text-xs font-medium">{device.ip_address}:{device.port}</div>
+                  <div className="font-mono text-xs font-medium">{device.ipAddress}:{device.port}</div>
                 </div>
                 <div className="space-y-1">
                   <span className="text-xs text-muted-foreground">Location</span>
                   <div className="font-medium truncate">{device.location || 'N/A'}</div>
                 </div>
               </div>
-               <div>
-                  <span className="text-muted-foreground">Last Seen:</span>
-                  <div className="font-small">{(device.macAddress)}</div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Last Seen</span>
+                  <div className="font-mono text-xs font-medium">{device.macAddress}:{device.port}</div>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">firmwareVersion:</span>
-                  <div className="font-small">{device.firmwareVersion}</div>
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Firmware Version</span>
+                  <div className="font-medium truncate">{device.firmwareVersion || 'N/A'}</div>
                 </div>
+              </div>
+  
               
               <div className="space-y-2 pt-2 border-t">
                 <div className="flex justify-between items-center text-sm">

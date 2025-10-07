@@ -440,7 +440,7 @@ export function AIMessages() {
         <TabsList>
           <TabsTrigger value="generate">Generate Messages</TabsTrigger>
           <TabsTrigger value="messages">Saved Messages ({messages.length})</TabsTrigger>
-          <TabsTrigger value="templates">Templates ({templates.length})</TabsTrigger>
+          {/* <TabsTrigger value="templates">Templates ({templates.length})</TabsTrigger> */}
         </TabsList>
 
         <TabsContent value="generate" className="space-y-6">
