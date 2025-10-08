@@ -1,31 +1,30 @@
+// store/useSocketStore.ts - Clean version without notifications
 import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from './useAuthStore';
+import { useNotificationStore } from './useNotificationStore';
 
 interface SocketState {
   socket: Socket | null;
   isConnected: boolean;
   campaignUpdates: any[];
-  notifications: any[];
   devicesStatus: Record<string, any>;
   
   // Actions
   connect: () => void;
   disconnect: () => void;
-  addNotification: (notification: any) => void;
-  clearNotifications: () => void;
-  markNotificationAsRead: (notificationId: string) => void;
+  emitEvent: (event: string, data: any) => void;
 }
 
 export const useSocketStore = create<SocketState>((set, get) => ({
   socket: null,
   isConnected: false,
   campaignUpdates: [],
-  notifications: [],
   devicesStatus: {},
 
   connect: () => {
     const { user, token } = useAuthStore.getState();
+    const { addNotification, fetchNotifications } = useNotificationStore.getState();
     
     if (!user || !token) {
       console.warn('No user or token available for socket connection');
@@ -54,6 +53,9 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       
       // Join user-specific room
       socket.emit('join-user-room', user._id);
+      
+      // Fetch initial notifications through notification store
+      fetchNotifications();
     });
 
     socket.on('disconnect', (reason) => {
@@ -71,19 +73,6 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       set(state => ({
         campaignUpdates: [...state.campaignUpdates, data]
       }));
-      
-      // Add as notification if it's important
-      if (data.updates.status === 'completed' || data.updates.status === 'failed') {
-        get().addNotification({
-          id: `campaign-${data.campaignId}-${Date.now()}`,
-          type: data.updates.status === 'completed' ? 'success' : 'error',
-          title: `Campaign ${data.updates.status}`,
-          message: `Campaign "${data.campaignId}" has ${data.updates.status}`,
-          time: new Date().toISOString(),
-          unread: true,
-          data: data
-        });
-      }
     });
 
     socket.on('device-status-update', (data: any) => {
@@ -94,37 +83,24 @@ export const useSocketStore = create<SocketState>((set, get) => ({
           [data.deviceId]: data.status
         }
       }));
-
-      // Add notification for device status changes
-      if (data.status === 'offline' || data.status === 'error') {
-        get().addNotification({
-          id: `device-${data.deviceId}-${Date.now()}`,
-          type: data.status === 'offline' ? 'error' : 'warning',
-          title: `Device ${data.status}`,
-          message: `Device "${data.deviceId}" is ${data.status}`,
-          time: new Date().toISOString(),
-          unread: true,
-          data: data
-        });
-      }
     });
 
-    socket.on('new-message', (data: any) => {
-      console.log('Received new message:', data);
-      get().addNotification({
-        id: `message-${data.messageId}-${Date.now()}`,
-        type: 'info',
-        title: 'New Message Received',
-        message: `From: ${data.from}`,
-        time: new Date().toISOString(),
+    socket.on('new-notification', (data: any) => {
+      console.log('Received new notification:', data);
+      addNotification({
+        id: data.id || `notification-${Date.now()}`,
+        title: data.title,
+        message: data.message,
+        type: data.type || 'info',
+        time: data.time || new Date().toISOString(),
         unread: true,
-        data: data
+        data: data.data
       });
     });
 
     socket.on('system-notification', (data: any) => {
       console.log('Received system notification:', data);
-      get().addNotification({
+      addNotification({
         id: `system-${Date.now()}`,
         type: data.type || 'info',
         title: data.title,
@@ -133,6 +109,12 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         unread: true,
         data: data
       });
+    });
+
+    // Listen for notification updates from server
+    socket.on('notifications-updated', () => {
+      console.log('Notifications updated, refreshing...');
+      fetchNotifications();
     });
 
     set({ socket });
@@ -146,28 +128,12 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     }
   },
 
-
-  addNotification: (notification: any) => {
-    set(state => ({
-      notifications: [notification, ...state.notifications].slice(0, 50) // Keep last 50 notifications
-    }));
-  },
-
-  clearNotifications: () => {
-    set({ notifications: [] });
-  },
-
-  markNotificationAsRead: (notificationId: string) => {
-    set(state => ({
-      notifications: state.notifications.map(notif =>
-        notif.id === notificationId ? { ...notif, unread: false } : notif
-      )
-    }));
-  },
-
-  markAllAsRead: () => {
-    set(state => ({
-      notifications: state.notifications.map(notif => ({ ...notif, unread: false }))
-    }));
+  emitEvent: (event: string, data: any) => {
+    const { socket } = get();
+    if (socket && socket.connected) {
+      socket.emit(event, data);
+    } else {
+      console.warn('Socket not connected, cannot emit event:', event);
+    }
   }
 }));

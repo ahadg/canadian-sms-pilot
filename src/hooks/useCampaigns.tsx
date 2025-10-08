@@ -298,10 +298,7 @@ export function useCampaigns() {
       const messagesResponse = await messageAPI.getAll({ isTemplate: false });
       console.log("messagesResponse",messagesResponse)
       setMessages(messagesResponse?.data?.messages || []);
-      
-      // Fetch templates
-      // const templatesResponse = await messageAPI.getTemplates();
-      // setMessageTemplates(templatesResponse.templates || []);
+
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
@@ -319,34 +316,62 @@ const createCampaign = async (campaignData: any) => {
       taskId: [] // Initialize empty array for task IDs
     });
     
-    const newCampaign = response.data.campaign;
+    let newCampaign = response.data.campaign;
+    if(campaignData.status === 'active'){
+      // 2) Fetch opted-in contacts for that list
+      const contactsResponse = await contactAPI.getContacts(campaignData.contactList, {
+        status: 'active',
+        optedIn: true
+      });
+      console.log("contactsResponse",contactsResponse)
+      const contacts = contactsResponse.data.contacts || [];
+  
+      if (contacts.length === 0) {
+        throw new Error('No opted-in contacts found in the selected list');
+      }
+  
+      // 3) Send messages
+      await sendCampaignSms(
+        newCampaign?._id,
+        newCampaign?.device?._id,
+        contacts
+      );
+
+      let updatedCampaign = await campaignAPI.getById(newCampaign?._id);
+      console.log("updatedCampaign",updatedCampaign)
+      setCampaigns(prev => prev.map(campaign => campaign._id === newCampaign?._id ? updatedCampaign.data.campaign : campaign));
+  
+    }
     setCampaigns(prev => [newCampaign, ...prev]);
     toast.success('Campaign created successfully');
     return newCampaign;
   } catch (error) {
     console.error('Error creating campaign:', error);
     toast.error('Failed to create campaign');
+    if(campaignData.status === 'active') {
+      await updateCampaignStatus(campaignData.contactList?._id, 'scheduled');
+    }
     throw error;
   }
 };
 
-  // Update campaign status
-  const updateCampaignStatus = async (id: string, status: Campaign['status']) => {
-    try {
-      await campaignAPI.updateStatus(id, status);
-      
-      setCampaigns(prev => 
-        prev.map(campaign => 
-          campaign._id === id ? { ...campaign, status } : campaign
-        )
-      );
-      toast.success(`Campaign ${status}`);
-    } catch (error) {
-      console.error('Error updating campaign status:', error);
-      toast.error('Failed to update campaign status');
-      throw error;
-    }
-  };
+// Update campaign status
+const updateCampaignStatus = async (id: string, status: Campaign['status']) => {
+  try {
+    await campaignAPI.updateStatus(id, status);
+    
+    setCampaigns(prev => 
+      prev.map(campaign => 
+        campaign._id === id ? { ...campaign, status } : campaign
+      )
+    );
+    toast.success(`Campaign ${status}`);
+  } catch (error) {
+    console.error('Error updating campaign status:', error);
+    toast.error('Failed to update campaign status');
+    throw error;
+  }
+};
 
   // Update campaign
   const updateCampaign = async (id: string, updates: Partial<Campaign>) => {
@@ -385,7 +410,7 @@ const createCampaign = async (campaignData: any) => {
   // Add these methods to your useCampaigns hook:
 
 // Pause specific SMS tasks
-const pauseCampaignTasks = async (device:any,taskId: number[]) => {
+const pauseCampaignTasks = async (device:any,taskId: any[]) => {
   try {
     const response = await EjoinAPI.pauseSmsTasks(device,taskId);
     console.log("pauseCampaignTasks_response",response)
@@ -403,9 +428,9 @@ const pauseCampaignTasks = async (device:any,taskId: number[]) => {
 };
 
 // Resume specific SMS tasks
-const resumeCampaignTasks = async (device:any,taskId: number[]) => {
+const resumeCampaignTasks = async (device:any,taskIds: any[]) => {
   try {
-    const response = await EjoinAPI.resumeSmsTasks(device,taskId);
+    const response = await EjoinAPI.resumeSmsTasks(device,taskIds);
     console.log("resumeCampaignTasks_response",response)
     if (response?.[0]?.reason === "OK") {
       toast.success('Campaign tasks resumed successfully');
@@ -421,9 +446,9 @@ const resumeCampaignTasks = async (device:any,taskId: number[]) => {
 };
 
 // Remove specific SMS tasks
-const removeCampaignTasks = async (device:any,taskId: number[]) => {
+const removeCampaignTasks = async (device:any,taskIds: any[]) => {
   try {
-    const response = await EjoinAPI.removeSmsTasks(device,taskId);
+    const response = await EjoinAPI.removeSmsTasks(device,taskIds);
     console.log("removeCampaignTasks_response",response)
     if (response?.[0]?.reason === "OK") {
       toast.success('Campaign tasks removed successfully');

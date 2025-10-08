@@ -1,3 +1,4 @@
+// App.tsx - Updated to use separate stores
 import { useEffect, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Dashboard } from "@/components/dashboard/Dashboard";
@@ -8,6 +9,7 @@ import { Analytics } from "@/components/analytics/Analytics";
 import { Auth } from "./Auth";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useSocketStore } from "@/store/useSocketStore";
+import { useNotificationStore } from "@/store/useNotificationStore";
 import { Toaster } from "@/components/ui/toaster";
 import { Settings } from "@/components/settings";
 import { Inbox } from "@/components/inbox";
@@ -22,7 +24,8 @@ import {
   MessageCircle, 
   Sparkles,
   Wifi,
-  WifiOff as WifiDisconnected
+  WifiOff as WifiDisconnected,
+  Loader2
 } from "lucide-react";
 
 function AppContent() {
@@ -31,15 +34,20 @@ function AppContent() {
   
   const { user, isAuthenticated, loading, checkAuth } = useAuthStore();
   const { 
-    socket, 
     isConnected, 
     connect, 
-    disconnect, 
-    notifications, 
-    //markAllAsRead,
-    markNotificationAsRead 
+    disconnect 
   } = useSocketStore();
-
+  
+  const {
+    notifications,
+    notificationsLoading,
+    markNotificationAsReadOnServer,
+    markAllAsReadOnServer,
+    fetchNotifications,
+    getUnreadCount
+  } = useNotificationStore();
+  console.log("notifications",notifications)
   useEffect(() => {
     // Check authentication status on app load
     checkAuth();
@@ -59,6 +67,14 @@ function AppContent() {
       disconnect();
     };
   }, [isAuthenticated, user, connect, disconnect]);
+
+  // Load notifications when authenticated (even if socket is slow)
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      console.log('Authenticated, loading notifications...');
+      fetchNotifications();
+    }
+  }, [isAuthenticated, user, fetchNotifications]);
 
   if (loading) {
     return (
@@ -91,8 +107,8 @@ function AppContent() {
     }
   };
 
-  // Get unread count from socket notifications
-  const unreadCount = notifications.filter(n => n.unread).length;
+  // Get unread count from notification store
+  const unreadCount = getUnreadCount();
 
   // Format notification time
   const formatTime = (timestamp: string) => {
@@ -143,15 +159,15 @@ function AppContent() {
     return configs[type as keyof typeof configs] || configs.default;
   };
 
-  const handleMarkAllAsRead = () => {
-    //markAllAsRead();
+  const handleMarkAllAsRead = async () => {
+    await markAllAsReadOnServer();
     setShowNotifications(false);
   };
 
-  const handleNotificationClick = (notification: any) => {
+  const handleNotificationClick = async (notification: any) => {
     // Mark as read when clicked
     if (notification.unread) {
-      markNotificationAsRead(notification.id);
+      await markNotificationAsReadOnServer(notification.id);
     }
 
     // Handle navigation based on notification type
@@ -188,7 +204,6 @@ function AppContent() {
           {isConnected ? (
             <>
               <Wifi className="h-3 w-3" />
-              {/* <span>Connected</span> */}
             </>
           ) : (
             <>
@@ -206,19 +221,24 @@ function AppContent() {
           size="icon"
           className={cn(
             "h-14 w-14 rounded-full shadow-lg relative transition-all duration-300 hover:scale-110 hover:shadow-xl",
-            !isConnected && "opacity-70"
+            !isConnected && "opacity-70",
+            notificationsLoading && "opacity-50"
           )}
           onClick={() => setShowNotifications(!showNotifications)}
-          disabled={!isConnected}
+          disabled={!isConnected || notificationsLoading}
         >
-          <Bell className={cn(
-            "h-6 w-6 transition-all duration-300",
-            showNotifications && "rotate-12 scale-110"
-          )} />
+          {notificationsLoading ? (
+            <Loader2 className="h-6 w-6 animate-spin" />
+          ) : (
+            <Bell className={cn(
+              "h-6 w-6 transition-all duration-300",
+              showNotifications && "rotate-12 scale-110"
+            )} />
+          )}
           {unreadCount > 0 && (
             <>
               <span className="absolute -top-1 -right-1 h-6 w-6 rounded-full bg-gradient-to-br from-red-500 to-red-600 text-xs font-bold text-white flex items-center justify-center shadow-lg border-2 border-background animate-in zoom-in duration-300">
-                {unreadCount}
+                {unreadCount > 99 ? '99+' : unreadCount}
               </span>
               <span className="absolute -top-1 -right-1 h-6 w-6 rounded-full bg-red-500 animate-ping opacity-75" />
             </>
@@ -243,11 +263,19 @@ function AppContent() {
               <div className="relative flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-2xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
-                    <Bell className="h-5 w-5 text-primary" />
+                    {notificationsLoading ? (
+                      <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                    ) : (
+                      <Bell className="h-5 w-5 text-primary" />
+                    )}
                   </div>
                   <div>
                     <h3 className="font-bold text-lg">Notifications</h3>
-                    {unreadCount > 0 ? (
+                    {notificationsLoading ? (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Loading notifications...
+                      </p>
+                    ) : unreadCount > 0 ? (
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {unreadCount} new notification{unreadCount !== 1 ? 's' : ''}
                       </p>
@@ -258,7 +286,7 @@ function AppContent() {
                     )}
                   </div>
                 </div>
-                {unreadCount > 0 && (
+                {!notificationsLoading && unreadCount > 0 && (
                   <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg">
                     <span className="text-sm font-bold text-primary-foreground">{unreadCount}</span>
                   </div>
@@ -268,7 +296,11 @@ function AppContent() {
             
             {/* Notifications List */}
             <div className="overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent">
-              {notifications.length === 0 ? (
+              {notificationsLoading ? (
+                <div className="flex items-center justify-center p-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : notifications.length === 0 ? (
                 <div className="p-16 text-center">
                   <div className="h-20 w-20 rounded-3xl bg-gradient-to-br from-muted/50 to-muted/30 mx-auto mb-4 flex items-center justify-center ring-1 ring-border/50">
                     <Bell className="h-10 w-10 opacity-20" />
@@ -353,12 +385,13 @@ function AppContent() {
             </div>
             
             {/* Footer with action button */}
-            {notifications.length > 0 && (
+            {!notificationsLoading && notifications.length > 0 && (
               <div className="p-4 border-t border-border/50 bg-gradient-to-br from-background to-background/50">
                 <Button
                   variant="ghost"
                   className="w-full text-sm font-semibold hover:bg-primary/10 hover:text-primary transition-all duration-300 rounded-xl h-11 gap-2 group"
                   onClick={handleMarkAllAsRead}
+                  disabled={unreadCount === 0}
                 >
                   <CheckCheck className="h-4 w-4 transition-transform group-hover:scale-110" />
                   Mark all as read
