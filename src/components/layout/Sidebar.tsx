@@ -1,3 +1,4 @@
+// components/Sidebar.tsx
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -10,13 +11,13 @@ import {
   Zap,
   MessageSquare,
   LogOut,
-  MessageCircle,
   MessageCircleMore
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
+import { useNavigationStore } from "@/store/useNavigationStore";
+
 interface SidebarProps {
-  activeSection: string;
-  onSectionChange: (section: string) => void;
+  // Remove activeSection and onSectionChange props since we're using Zustand
 }
 
 const navigationItems = [
@@ -58,8 +59,9 @@ const navigationItems = [
   },
 ];
 
-export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
+export function Sidebar({ }: SidebarProps) {
   const { logout } = useAuthStore();
+  const { activeSection, navigateToSection } = useNavigationStore();
   
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-card">
@@ -88,7 +90,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
                 "w-full justify-start gap-3 h-auto p-3",
                 isActive && "bg-primary text-primary-foreground shadow-primary"
               )}
-              onClick={() => onSectionChange(item.id)}
+              onClick={() => navigateToSection(item.id)}
             >
               <Icon className="h-4 w-4" />
               <div className="text-left">
@@ -107,7 +109,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
         <Button
           variant="ghost"
           className="w-full justify-start gap-3"
-          onClick={() => onSectionChange("settings")}
+          onClick={() => navigateToSection("settings")}
         >
           <Settings className="h-4 w-4" />
           Settings

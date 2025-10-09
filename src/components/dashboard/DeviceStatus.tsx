@@ -258,7 +258,7 @@ export function DeviceStatus({ devices: propDevices }: DeviceStatusProps) {
                 </div>
 
                 <div className="flex items-center gap-4">
-                  <div className="text-right">
+                  {/* <div className="text-right">
                     <div className="text-sm font-medium">
                       {usage.sent.toLocaleString()} / {usage.limit.toLocaleString()}
                     </div>
@@ -267,7 +267,7 @@ export function DeviceStatus({ devices: propDevices }: DeviceStatusProps) {
                       value={usagePercentage} 
                       className="w-24 h-2 mt-1"
                     />
-                  </div>
+                  </div> */}
                   
                   <div className="flex items-center gap-2">
                     {getStatusBadge(device.status)}

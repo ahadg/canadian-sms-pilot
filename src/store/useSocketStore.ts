@@ -5,6 +5,7 @@ import { useAuthStore } from './useAuthStore';
 import { useNotificationStore } from './useNotificationStore';
 import { decodeBase64, useMessagesStore } from './useMessagesStore';
 import { toast } from 'sonner';
+import { useNavigationStore } from './useNavigationStore';
 
 interface SocketState {
   socket: Socket | null;
@@ -27,6 +28,8 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   connect: () => {
     const { user, token } = useAuthStore.getState();
     const { addNotification, fetchNotifications } = useNotificationStore.getState();
+    const { navigateToSection } = useNavigationStore.getState();
+
     const { 
       messages, 
       setMessages, 
@@ -89,11 +92,12 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         fetchConversations,
         currentConversation,
         selectedDevice,
-        //shouldUpdateCurrentConversation,
-        updateCurrentConversationWithMessage,
-        fetchConversation
+        conversations,
+        setConversations,
+        fetchConversation,
+        markAsRead
       } = useMessagesStore.getState();
-
+    
       // Add new message to messages list
       const newMessage: any = {
         id: data._id || data.id || `msg-${Date.now()}-${Math.random()}`,
@@ -109,18 +113,61 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         isReport: data.isReport || false,
         sim: data.sim || { port: data.port, slot: data.slot }
       };
-
+    
       console.log('Processed new message:', newMessage);
-
+    
       // Update messages list (new messages at top)
       const updatedMessages = [newMessage, ...messages];
       setMessages(updatedMessages);
-
-      // Refresh conversations to include new message
-      if (selectedDevice) {
-        fetchConversations(selectedDevice._id);
+    
+      // Update conversations state with new message
+      const phoneNumber = data.direction === 'inbound' ? data.from : data.to;
+      const port = data.sim?.port || data.port;
+      const slot = data.sim?.slot || data.slot;
+      
+      // Find if this conversation already exists
+      const existingConversationIndex = conversations.findIndex(conv =>
+        conv.phoneNumber === phoneNumber &&
+        conv.port === port &&
+        conv.slot === slot
+      );
+    
+      if (existingConversationIndex !== -1) {
+        // Update existing conversation
+        const updatedConversations = [...conversations];
+        const existingConv = updatedConversations[existingConversationIndex];
+        
+        updatedConversations[existingConversationIndex] = {
+          ...existingConv,
+          lastMessage: newMessage.sms,
+          lastTimestamp: newMessage.timestamp,
+          unreadCount: newMessage.direction === 'inbound' && !newMessage.read ? 
+            existingConv.unreadCount + 1 : existingConv.unreadCount,
+          messageCount: existingConv.messageCount + 1
+        };
+        
+        // Move updated conversation to top of the list
+        const [updatedConversation] = updatedConversations.splice(existingConversationIndex, 1);
+        updatedConversations.unshift(updatedConversation);
+        
+        setConversations(updatedConversations);
+      } else {
+        // Create new conversation
+        const newConversation: any = {
+          phoneNumber: phoneNumber,
+          port: port,
+          slot: slot,
+          lastMessage: newMessage.sms,
+          lastTimestamp: newMessage.timestamp,
+          unreadCount: newMessage.direction === 'inbound' && !newMessage.read ? 1 : 0,
+          messageCount: 1,
+          simId: `${port}-${slot}`
+        };
+        
+        // Add new conversation to top of the list
+        setConversations([newConversation, ...conversations]);
       }
-
+    
       // Check if the new message belongs to the current conversation
       const shouldUpdateCurrentConversation = currentConversation && 
         (
@@ -130,7 +177,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         ) &&
         currentConversation.port === (data.sim?.port || data.port) &&
         currentConversation.slot === (data.sim?.slot || data.slot);
-
+    
       console.log('Should update current conversation:', shouldUpdateCurrentConversation, {
         currentConversation,
         newMessageDirection: data.direction,
@@ -140,32 +187,26 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         portMatch: currentConversation?.port === (data.sim?.port || data.port),
         slotMatch: currentConversation?.slot === (data.sim?.slot || data.slot)
       });
-
+    
       // If current conversation matches the new message, update it
       if (shouldUpdateCurrentConversation && selectedDevice) {
         console.log('Updating current conversation with new message');
         
-        // Method 1: Update locally for immediate UI update
+        // Update locally for immediate UI update
         if (currentConversation) {
+          newMessage.read = true;
           const updatedConversation: any = {
             ...currentConversation,
             lastMessage: newMessage.sms,
             lastTimestamp: newMessage.timestamp,
-            unreadCount: newMessage.direction === 'inbound' && !newMessage.read ? 
-              currentConversation.unreadCount + 1 : currentConversation.unreadCount,
-            messageCount: currentConversation.messageCount + 1,
+            // unreadCount: newMessage.direction === 'inbound' && !newMessage.read ? 
+            //   currentConversation.unreadCount + 1 : currentConversation.unreadCount,
+            //messageCount: currentConversation.messageCount + 1,
             messages: [...currentConversation.messages, newMessage] // Add to end for chronological order
           };
           useMessagesStore.getState().setCurrentConversation(updatedConversation);
+          markAsRead(newMessage.id);
         }
-        
-        // Method 2: Alternatively, refresh the entire conversation from server
-        // useMessagesStore.getState().fetchConversation(
-        //   currentConversation.phoneNumber, 
-        //   data.port, 
-        //   data.slot, 
-        //   selectedDevice._id
-        // );
       } else if (currentConversation) {
         console.log('Message does not belong to current conversation', {
           currentPhone: currentConversation.phoneNumber,
@@ -174,13 +215,13 @@ export const useSocketStore = create<SocketState>((set, get) => ({
           direction: data.direction
         });
       }
-
+    
       // Get current active section from App state to check if user is on inbox
       const isUserOnInbox = window.location.pathname.includes('inbox') || 
                           window.__ACTIVE_SECTION__ === 'inbox';
-
+    
       console.log('User on inbox section:', isUserOnInbox);
-
+    
       // Only show toast if user is NOT on inbox section OR if not viewing this specific conversation
       const isViewingThisConversation = shouldUpdateCurrentConversation;
       
@@ -192,16 +233,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
             label: 'View',
             onClick: () => {
               // Navigate to inbox or focus the app
-              if (selectedDevice) {
-                useMessagesStore.getState().fetchConversation(
-                  data.from, 
-                  data.port, 
-                  data.slot, 
-                  selectedDevice._id
-                );
-                // You might want to add navigation logic here
-                // window.location.href = '/inbox';
-              }
+              useNavigationStore.getState().navigateToSection('inbox');
             }
           }
         });

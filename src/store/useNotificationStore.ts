@@ -11,6 +11,7 @@ export interface Notification {
   time: string;
   unread: boolean;
   data?: any;
+  _id: string
 }
 
 interface NotificationState {
@@ -76,7 +77,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   markNotificationAsRead: (notificationId: string) => {
     set(state => ({
       notifications: state.notifications.map(notif =>
-        notif.id === notificationId ? { ...notif, unread: false } : notif
+        (notif.id || notif._id) === notificationId ? { ...notif, unread: false } : notif
       )
     }));
   },

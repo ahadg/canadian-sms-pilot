@@ -1,9 +1,8 @@
 // components/ContactManager.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { 
-  X, Upload, Download, Plus, Trash2, Loader2, Search, Filter, 
-  ChevronDown, ChevronUp, Edit, Save, X as CloseIcon, 
-  Users
+  X, Upload, Download, Plus, Trash2, Loader2, Search, 
+  Edit, Save, Users, RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +23,13 @@ interface ContactManagerProps {
   onOpenChange: (open: boolean) => void;
 }
 
+interface NewContactForm {
+  phoneNumber: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  optedIn: boolean;
+}
 
 export function ContactManager({ contactListId, open, onOpenChange }: ContactManagerProps) {
   const {
@@ -36,48 +42,72 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
     updateContact,
     deleteContact,
     importContactsFromFile,
-    exportContacts
+    exportContacts,
+    refreshContactLists,
+    searchContacts
   } = useContactManagement();
 
-  const [activeTab, setActiveTab] = useState("view");
+  const [activeTab, setActiveTab] = useState<"view" | "add" | "import">("view");
   const [filters, setFilters] = useState<ContactFilters>({});
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [filteredContacts, setFilteredContacts] = useState<any[]>([]);
   const [editableContacts, setEditableContacts] = useState<any[]>([]);
-  const [newContact, setNewContact] = useState({
+  const [newContact, setNewContact] = useState<NewContactForm>({
     phoneNumber: '',
-    countryCode: '+1',
     firstName: '',
     lastName: '',
     email: '',
-    //company: '',
-    optedInCount: 1,
-    opted_out_count: 0,
+    optedIn: true,
   });
 
   const currentContactList = contactLists.find((list: any) => list._id === contactListId);
 
+  // Load contacts when dialog opens or contact list changes
   useEffect(() => {
     if (open && contactListId) {
       loadContacts();
+      refreshContactLists(); // Refresh lists to get latest counts
     }
   }, [open, contactListId]);
 
+  // Update filtered contacts when contacts, search, or filters change
   useEffect(() => {
-    setEditableContacts(contacts);
-  }, [contacts]);
+    if (searchInput.trim() || Object.keys(filters).length > 0) {
+      const results = searchContacts(searchInput, filters);
+      setFilteredContacts(results);
+    } else {
+      setFilteredContacts(contacts);
+    }
+  }, [contacts, searchInput, filters, searchContacts]);
 
-  const loadContacts = async () => {
+  // Update editable contacts when filtered contacts change
+  useEffect(() => {
+    setEditableContacts(filteredContacts.map(contact => ({
+      ...contact,
+      isEditing: false,
+      tempData: null
+    })));
+  }, [filteredContacts]);
+
+  const loadContacts = useCallback(async () => {
     try {
-      await fetchContacts(contactListId, { ...filters, search: searchTerm || undefined });
+      await fetchContacts(contactListId, filters);
     } catch (error) {
       toast.error('Failed to load contacts');
     }
-  };
+  }, [contactListId, filters, fetchContacts]);
 
   const handleSearch = (value: string) => {
-    setSearchTerm(value);
-    // Debounced search would be better here
-    setTimeout(() => loadContacts(), 300);
+    setSearchInput(value);
+  };
+
+  const handleFilterChange = (key: keyof ContactFilters, value: any) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const clearAllFilters = () => {
+    setSearchInput('');
+    setFilters({});
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,6 +133,11 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
         toast.success(`Successfully imported ${result.success} contacts`);
       }
       
+      // Switch to view tab and refresh contacts
+      setActiveTab("view");
+      await loadContacts();
+      await refreshContactLists();
+      
       event.target.value = '';
     } catch (error: any) {
       toast.error(error.message || 'Failed to import contacts');
@@ -116,18 +151,26 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
     }
 
     try {
-      await addContact(contactListId, newContact);
+      await addContact(contactListId, {
+        ...newContact,
+        optedInCount: newContact.optedIn ? 1 : 0,
+        opted_out_count: newContact.optedIn ? 0 : 1
+      });
+      
       setNewContact({
         phoneNumber: '',
-        countryCode: '+1',
         firstName: '',
         lastName: '',
         email: '',
-        //company: '',
-        optedInCount: 0,
-        opted_out_count: 0,
+        optedIn: true,
       });
+      
       toast.success('Contact added successfully');
+      
+      // Refresh contacts and switch to view tab
+      await loadContacts();
+      await refreshContactLists();
+      setActiveTab("view");
     } catch (error: any) {
       toast.error(error.message || 'Failed to add contact');
     }
@@ -135,22 +178,34 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
 
   const handleEditContact = (contactId: string) => {
     setEditableContacts(prev => prev.map(contact => 
-      contact.id === contactId 
-        ? { ...contact, isEditing: true, tempData: { ...contact } }
+      contact._id === contactId 
+        ? { 
+            ...contact, 
+            isEditing: true, 
+            tempData: { 
+              phoneNumber: contact.phoneNumber,
+              firstName: contact.firstName,
+              lastName: contact.lastName,
+              email: contact.email,
+              optedIn: contact.optedIn
+            } 
+          }
         : contact
     ));
   };
 
   const handleSaveContact = async (contactId: string) => {
-    const contact = editableContacts.find(c => c.id === contactId);
+    const contact = editableContacts.find(c => c._id === contactId);
     if (!contact?.tempData) return;
 
     try {
       await updateContact(contactId, contact.tempData);
       setEditableContacts(prev => prev.map(c => 
-        c.id === contactId ? { ...c, isEditing: false, tempData: undefined } : c
+        c._id === contactId ? { ...c, isEditing: false, tempData: null } : c
       ));
       toast.success('Contact updated successfully');
+      await loadContacts();
+      await refreshContactLists();
     } catch (error: any) {
       toast.error(error.message || 'Failed to update contact');
     }
@@ -158,8 +213,8 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
 
   const handleCancelEdit = (contactId: string) => {
     setEditableContacts(prev => prev.map(contact => 
-      contact.id === contactId 
-        ? { ...contact, isEditing: false, tempData: undefined }
+      contact._id === contactId 
+        ? { ...contact, isEditing: false, tempData: null }
         : contact
     ));
   };
@@ -170,6 +225,8 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
     try {
       await deleteContact(contactId);
       toast.success('Contact deleted successfully');
+      await loadContacts();
+      await refreshContactLists();
     } catch (error: any) {
       toast.error(error.message || 'Failed to delete contact');
     }
@@ -183,7 +240,9 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
       const link = document.createElement('a');
       link.href = url;
       link.download = `contacts-${currentContactList?.name}-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       toast.success('Contacts exported successfully');
     } catch (error) {
@@ -192,15 +251,24 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
   };
 
   const downloadTemplate = () => {
-    const csvContent = "phoneNumber,countryCode,firstName,lastName,email,opted_in\n+1234567890,+1,John,Doe,john@example.com,true";
+    const csvContent = "phoneNumber,firstName,lastName,email,optedIn\n+1234567890,John,Doe,john@example.com,true";
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = 'contact_template.csv';
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   };
+
+  const handleRefresh = async () => {
+    await loadContacts();
+    await refreshContactLists();
+  };
+
+  const hasActiveFilters = searchInput.trim() || Object.keys(filters).length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -214,6 +282,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
             {currentContactList?.totalContacts} total contacts • 
             {currentContactList?.optedInCount} opted in • 
             {currentContactList?.optedOutCount} opted out
+            {hasActiveFilters && ` • Showing ${filteredContacts.length} filtered contacts`}
           </DialogDescription>
         </DialogHeader>
 
@@ -234,7 +303,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         placeholder="Search contacts..."
-                        value={searchTerm}
+                        value={searchInput}
                         onChange={(e) => handleSearch(e.target.value)}
                         className="pl-10"
                       />
@@ -243,24 +312,36 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                   
                   <Select 
                     value={filters.optedIn?.toString() || ''} 
-                    onValueChange={(value) => setFilters(prev => ({ ...prev, optedIn: value === 'true' }))}
+                    onValueChange={(value) => handleFilterChange('optedIn', value === '' ? undefined : value === 'true')}
                   >
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Opt-in Status" />
                     </SelectTrigger>
                     <SelectContent>
+                      {/* <SelectItem value="">All Status</SelectItem> */}
                       <SelectItem value="true">Opted In</SelectItem>
                       <SelectItem value="false">Opted Out</SelectItem>
                     </SelectContent>
                   </Select>
 
-                  <Button variant="outline" onClick={handleExportContacts}>
+                  {hasActiveFilters && (
+                    <Button variant="outline" onClick={clearAllFilters}>
+                      <X className="h-4 w-4 mr-2" />
+                      Clear Filters
+                    </Button>
+                  )}
+
+                  <Button variant="outline" onClick={handleExportContacts} disabled={loading}>
                     <Download className="h-4 w-4 mr-2" />
                     Export
                   </Button>
 
-                  <Button onClick={loadContacts} disabled={loading}>
-                    {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  <Button onClick={handleRefresh} disabled={loading}>
+                    {loading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
                     Refresh
                   </Button>
                 </div>
@@ -270,7 +351,14 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
             {/* Contacts Table */}
             <Card>
               <CardHeader>
-                <CardTitle>Contacts ({contacts.length})</CardTitle>
+                <CardTitle>
+                  Contacts ({filteredContacts.length})
+                  {hasActiveFilters && (
+                    <span className="text-sm font-normal text-muted-foreground ml-2">
+                      (filtered from {contacts.length} total)
+                    </span>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="rounded-md border">
@@ -280,41 +368,56 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                         <TableHead>Phone Number</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Email</TableHead>
-                        {/* <TableHead>Company</TableHead> */}
                         <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
+                        <TableHead className="w-[120px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {loading ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8">
+                          <TableCell colSpan={5} className="text-center py-8">
                             <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                             <p className="text-sm text-muted-foreground mt-2">Loading contacts...</p>
                           </TableCell>
                         </TableRow>
                       ) : editableContacts.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8">
-                            <p className="text-muted-foreground">No contacts found</p>
+                          <TableCell colSpan={5} className="text-center py-8">
+                            <p className="text-muted-foreground">
+                              {hasActiveFilters 
+                                ? 'No contacts match your search criteria' 
+                                : 'No contacts found'
+                              }
+                            </p>
+                            {hasActiveFilters && (
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="mt-2"
+                                onClick={clearAllFilters}
+                              >
+                                Clear filters
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ) : (
                         editableContacts.map((contact) => (
-                          <TableRow key={contact.id}>
+                          <TableRow key={contact._id}>
                             <TableCell className="font-mono">
                               {contact.isEditing ? (
                                 <Input
+                                  placeholder="Phone Number"
                                   value={contact.tempData?.phoneNumber || ''}
                                   onChange={(e) => setEditableContacts(prev => 
-                                    prev.map(c => c.id === contact.id 
+                                    prev.map(c => c._id === contact._id 
                                       ? { ...c, tempData: { ...c.tempData, phoneNumber: e.target.value } }
                                       : c
                                     )
                                   )}
                                 />
                               ) : (
-                                `${contact.countryCode} ${contact.phoneNumber}`
+                                `${contact.phoneNumber}`
                               )}
                             </TableCell>
                             <TableCell>
@@ -324,7 +427,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                                     placeholder="First name"
                                     value={contact.tempData?.firstName || ''}
                                     onChange={(e) => setEditableContacts(prev => 
-                                      prev.map(c => c.id === contact.id 
+                                      prev.map(c => c._id === contact._id 
                                         ? { ...c, tempData: { ...c.tempData, firstName: e.target.value } }
                                         : c
                                       )
@@ -334,7 +437,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                                     placeholder="Last name"
                                     value={contact.tempData?.lastName || ''}
                                     onChange={(e) => setEditableContacts(prev => 
-                                      prev.map(c => c.id === contact.id 
+                                      prev.map(c => c._id === contact._id 
                                         ? { ...c, tempData: { ...c.tempData, lastName: e.target.value } }
                                         : c
                                       )
@@ -349,9 +452,10 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                               {contact.isEditing ? (
                                 <Input
                                   type="email"
+                                  placeholder="Email"
                                   value={contact.tempData?.email || ''}
                                   onChange={(e) => setEditableContacts(prev => 
-                                    prev.map(c => c.id === contact.id 
+                                    prev.map(c => c._id === contact._id 
                                       ? { ...c, tempData: { ...c.tempData, email: e.target.value } }
                                       : c
                                     )
@@ -361,34 +465,19 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                                 contact.email || '-'
                               )}
                             </TableCell>
-                            {/* <TableCell>
-                              {contact.isEditing ? (
-                                <Input
-                                  value={contact.tempData?.company || ''}
-                                  onChange={(e) => setEditableContacts(prev => 
-                                    prev.map(c => c.id === contact.id 
-                                      ? { ...c, tempData: { ...c.tempData, company: e.target.value } }
-                                      : c
-                                    )
-                                  )}
-                                />
-                              ) : (
-                                contact.company || '-'
-                              )}
-                            </TableCell> */}
                             <TableCell>
                               {contact.isEditing ? (
                                 <div className="flex items-center gap-2">
                                   <Switch
-                                    checked={contact.tempData?.optedInCount || false}
+                                    checked={contact.tempData?.optedIn || false}
                                     onCheckedChange={(checked) => setEditableContacts(prev => 
-                                      prev.map(c => c.id === contact.id 
-                                        ? { ...c, tempData: { ...c.tempData, optedInCount: checked } }
+                                      prev.map(c => c._id === contact._id 
+                                        ? { ...c, tempData: { ...c.tempData, optedIn: checked } }
                                         : c
                                       )
                                     )}
                                   />
-                                  <span className="text-sm">{contact.tempData?.optedInCount ? 'Opted In' : 'Opted Out'}</span>
+                                  <span className="text-sm">{contact.tempData?.optedIn ? 'Opted In' : 'Opted Out'}</span>
                                 </div>
                               ) : (
                                 <Badge variant={contact.optedIn ? "default" : "secondary"}>
@@ -400,22 +489,37 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                               <div className="flex gap-2">
                                 {contact.isEditing ? (
                                   <>
-                                    <Button size="sm" onClick={() => handleSaveContact(contact.id)}>
+                                    <Button 
+                                      size="sm" 
+                                      onClick={() => handleSaveContact(contact._id)}
+                                      disabled={loading}
+                                    >
                                       <Save className="h-3 w-3" />
                                     </Button>
-                                    <Button size="sm" variant="outline" onClick={() => handleCancelEdit(contact.id)}>
-                                      <CloseIcon className="h-3 w-3" />
+                                    <Button 
+                                      size="sm" 
+                                      variant="outline" 
+                                      onClick={() => handleCancelEdit(contact._id)}
+                                      disabled={loading}
+                                    >
+                                      <X className="h-3 w-3" />
                                     </Button>
                                   </>
                                 ) : (
                                   <>
-                                    <Button size="sm" variant="outline" onClick={() => handleEditContact(contact.id)}>
+                                    <Button 
+                                      size="sm" 
+                                      variant="outline" 
+                                      onClick={() => handleEditContact(contact._id)}
+                                      disabled={loading}
+                                    >
                                       <Edit className="h-3 w-3" />
                                     </Button>
                                     <Button 
                                       size="sm" 
                                       variant="outline" 
-                                      onClick={() => handleDeleteContact(contact.id)}
+                                      onClick={() => handleDeleteContact(contact._id)}
+                                      disabled={loading}
                                     >
                                       <Trash2 className="h-3 w-3" />
                                     </Button>
@@ -451,15 +555,6 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                     />
                   </div>
                   <div>
-                    <Label htmlFor="countryCode">Country Code</Label>
-                    <Input
-                      id="countryCode"
-                      placeholder="+1"
-                      value={newContact.countryCode}
-                      onChange={(e) => setNewContact(prev => ({ ...prev, countryCode: e.target.value }))}
-                    />
-                  </div>
-                  <div>
                     <Label htmlFor="firstName">First Name</Label>
                     <Input
                       id="firstName"
@@ -490,13 +585,17 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                   
                   <div className="flex items-center gap-2">
                     <Switch
-                      checked={newContact.optedInCount == 1}
-                      onCheckedChange={(checked) => setNewContact(prev => ({ ...prev, optedInCount: checked ? 1 : 0 }))}
+                      checked={newContact.optedIn}
+                      onCheckedChange={(checked) => setNewContact(prev => ({ ...prev, optedIn: checked }))}
                     />
                     <Label htmlFor="optedIn">Opted In</Label>
                   </div>
                 </div>
-                <Button onClick={handleAddContact} className="mt-4">
+                <Button 
+                  onClick={handleAddContact} 
+                  className="mt-4"
+                  disabled={!newContact.phoneNumber.trim() || loading}
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Contact
                 </Button>
@@ -542,9 +641,9 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                   </Button>
                 </div>
                 
-                <div className="text-sm text-muted-foreground">
+                <div className="text-sm text-muted-foreground space-y-1">
                   <p><strong>Required column:</strong> phoneNumber</p>
-                  <p><strong>Optional columns:</strong> countryCode, firstName, lastName, email, opted_in</p>
+                  <p><strong>Optional columns:</strong> firstName, lastName, email, optedIn</p>
                   <p><strong>Format:</strong> CSV with header row</p>
                 </div>
               </CardContent>

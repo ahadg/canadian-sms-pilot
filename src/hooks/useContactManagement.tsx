@@ -1,3 +1,4 @@
+// hooks/useContactManagement.ts
 import { useState, useCallback, useEffect } from 'react';
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from 'sonner';
@@ -8,7 +9,6 @@ export interface Contact {
   _id: string;
   contactList: string;
   phoneNumber: string;
-  countryCode: string;
   firstName?: string;
   lastName?: string;
   email?: string;
@@ -83,6 +83,19 @@ export function useContactManagement() {
     }
   }, [isAuthenticated]);
 
+  // Refresh contact lists (optimized version)
+  const refreshContactLists = useCallback(async (): Promise<void> => {
+    if (!isAuthenticated) return;
+    
+    try {
+      const response = await contactAPI.getLists();
+      const lists = response.data.contactLists || [];
+      setContactLists(lists);
+    } catch (error) {
+      console.error('Error refreshing contact lists:', error);
+    }
+  }, [isAuthenticated]);
+
   // Fetch contacts with filtering and pagination
   const fetchContacts = useCallback(async (
     contactListId: string, 
@@ -99,6 +112,7 @@ export function useContactManagement() {
         limit: filters.limit || 50
       };
 
+      // Only include filters that are needed for initial load
       if (filters.optedIn !== undefined) {
         params.optedIn = filters.optedIn;
       }
@@ -107,9 +121,10 @@ export function useContactManagement() {
         params.status = filters.status;
       }
       
-      if (filters.search) {
-        params.search = filters.search;
-      }
+      // Remove search from API call since we handle it locally
+      // if (filters.search) {
+      //   params.search = filters.search;
+      // }
 
       const response = await contactAPI.getContacts(contactListId, params);
       const contactsData = response.data.contacts || [];
@@ -196,10 +211,9 @@ export function useContactManagement() {
     if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
-      console.log("contactData",contactData)
       // Validate phone number
       const cleanPhone = contactData?.phoneNumber?.replace(/\D/g, '');
-      if (cleanPhone.length < 10 || cleanPhone?.length > 15) {
+      if (!cleanPhone || cleanPhone.length < 10 || cleanPhone.length > 15) {
         throw new Error('Phone number must be 10-15 digits');
       }
 
@@ -211,7 +225,13 @@ export function useContactManagement() {
       });
       
       const newContact = response.data.contact;
+      
+      // Update local state immediately for better UX
       setContacts(prev => [newContact, ...prev]);
+      
+      // Refresh contact lists to update counts
+      await refreshContactLists();
+      
       toast.success('Contact added successfully');
       return newContact;
     } catch (error: any) {
@@ -223,7 +243,7 @@ export function useContactManagement() {
       toast.error('Failed to add contact');
       throw error;
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, refreshContactLists]);
 
   // Update contact
   const updateContact = useCallback(async (
@@ -236,9 +256,16 @@ export function useContactManagement() {
       const response = await contactAPI.updateContact(contactId, updates);
       const updatedContact = response.data.contact;
       
+      // Update local state immediately
       setContacts(prev => prev.map(contact => 
         contact._id === contactId ? { ...contact, ...updatedContact } : contact
       ));
+      
+      // Refresh contact lists to update counts if optedIn changed
+      if (updates.optedIn !== undefined) {
+        await refreshContactLists();
+      }
+      
       toast.success('Contact updated successfully');
       return updatedContact;
     } catch (error) {
@@ -246,7 +273,7 @@ export function useContactManagement() {
       toast.error('Failed to update contact');
       throw new Error('Failed to update contact');
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, refreshContactLists]);
 
   // Delete contact
   const deleteContact = useCallback(async (contactId: string): Promise<void> => {
@@ -254,14 +281,20 @@ export function useContactManagement() {
 
     try {
       await contactAPI.deleteContact(contactId);
+      
+      // Update local state immediately
       setContacts(prev => prev.filter(contact => contact._id !== contactId));
+      
+      // Refresh contact lists to update counts
+      await refreshContactLists();
+      
       toast.success('Contact deleted successfully');
     } catch (error) {
       console.error('Error deleting contact:', error);
       toast.error('Failed to delete contact');
       throw new Error('Failed to delete contact');
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, refreshContactLists]);
 
   // Bulk import contacts
   const importContactsFromFile = useCallback(async (
@@ -283,7 +316,7 @@ export function useContactManagement() {
 
             for (const [index, row] of results.data.entries()) {
               try {
-                const phoneNumber = (row.phone || row.phone_number || row.number || row.Phone || '').toString().replace(/\D/g, '');
+                const phoneNumber = (row.phone || row.phone_number || row.number || row.Phone || row.phoneNumber || '').toString().replace(/\D/g, '');
                 
                 if (!phoneNumber) {
                   errors.push({
@@ -303,14 +336,23 @@ export function useContactManagement() {
                   continue;
                 }
 
+                const optedIn = !(
+                  row.opted_in === 'false' || 
+                  row.opt_in === 'false' || 
+                  row.optedIn === 'false' ||
+                  row.opted_in === '0' ||
+                  row.optedIn === '0' ||
+                  row.opted_in === false
+                );
+
                 contactsToImport.push({
                   phoneNumber: phoneNumber,
-                  countryCode: row.country_code || row.countryCode || '+1',
+                  // countryCode: row.country_code || row.countryCode || '+1',
                   firstName: row.first_name || row.firstName || row.firstname || row['First Name'] || '',
                   lastName: row.last_name || row.lastName || row.lastname || row['Last Name'] || '',
                   email: row.email || row.Email || '',
                   company: row.company || row.Company || '',
-                  optedIn: !(row.opted_in === 'false' || row.opt_in === 'false' || row.optedIn === 'false' || row.opted_in === false),
+                  optedIn: optedIn,
                   tags: row.tags ? row.tags.split(',').map((tag: string) => tag.trim()) : [],
                   customFields: row.custom_fields ? JSON.parse(row.custom_fields) : {},
                   source: 'file_import'
@@ -348,14 +390,10 @@ export function useContactManagement() {
               }
             }
 
-            // Refresh contacts if any were successfully imported
+            // Refresh contacts and lists if any were successfully imported
             if (importResult.success > 0) {
               await fetchContacts(contactListId);
-            }
-
-            toast.success(`Imported ${importResult.success} contacts successfully`);
-            if (importResult.failed > 0) {
-              toast.error(`${importResult.failed} contacts failed to import`);
+              await refreshContactLists();
             }
 
             resolve(importResult);
@@ -372,7 +410,7 @@ export function useContactManagement() {
         }
       });
     });
-  }, [isAuthenticated, fetchContacts]);
+  }, [isAuthenticated, fetchContacts, refreshContactLists]);
 
   // Export contacts to CSV
   const exportContacts = useCallback(async (contactListId: string, filters: ContactFilters = {}): Promise<string> => {
@@ -382,7 +420,7 @@ export function useContactManagement() {
       // Get all contacts by setting a high limit
       const response = await contactAPI.getContacts(contactListId, {
         ...filters,
-        limit: 10000, // High limit to get all contacts
+        limit: 10000,
         page: 1
       });
       
@@ -391,7 +429,7 @@ export function useContactManagement() {
       const headers = ['Phone Number', 'Country Code', 'First Name', 'Last Name', 'Email', 'Company', 'Opted In', 'Status', 'Source'];
       const csvRows = contacts.map(contact => [
         contact.phoneNumber,
-        contact.countryCode,
+        // contact.countryCode,
         contact.firstName || '',
         contact.lastName || '',
         contact.email || '',
@@ -438,34 +476,44 @@ export function useContactManagement() {
   }, [isAuthenticated]);
 
   // Search contacts across all lists
-  const searchContacts = useCallback(async (query: string, filters: ContactFilters = {}) => {
-    if (!isAuthenticated) throw new Error('User not authenticated');
-
-    try {
-      // This would need a dedicated search endpoint in your backend
-      // For now, we'll search in the first list or implement client-side search
-      if (contactLists.length > 0) {
-        return await fetchContacts(contactLists[0]._id, {
-          ...filters,
-          search: query
-        });
+  const searchContacts = useCallback((query: string, filters: ContactFilters = {}): Contact[] => {
+    if (!query.trim()) {
+      // If no search query, just apply filters
+      let results = contacts;
+      
+      if (filters.optedIn !== undefined) {
+        results = results.filter(contact => contact.optedIn === filters.optedIn);
       }
-      return [];
-    } catch (error) {
-      console.error('Error searching contacts:', error);
-      throw error;
+      
+      if (filters.status) {
+        results = results.filter(contact => contact.status === filters.status);
+      }
+      
+      return results;
     }
-  }, [isAuthenticated, contactLists, fetchContacts]);
 
+    const searchTerm = query.toLowerCase().trim();
+    
+    return contacts.filter(contact => {
+      // Search across multiple fields
+      const matchesSearch = 
+        contact.phoneNumber?.toLowerCase().includes(searchTerm) ||
+        contact.firstName?.toLowerCase().includes(searchTerm) ||
+        contact.lastName?.toLowerCase().includes(searchTerm) ||
+        contact.email?.toLowerCase().includes(searchTerm) ||
+        `${contact.firstName || ''} ${contact.lastName || ''}`.toLowerCase().includes(searchTerm);
+
+      // Apply filters
+      const matchesOptedIn = filters.optedIn === undefined || contact.optedIn === filters.optedIn;
+      const matchesStatus = !filters.status || contact.status === filters.status;
+
+      return matchesSearch && matchesOptedIn && matchesStatus;
+    });
+  }, [contacts]);
+  // Initialize data
   useEffect(() => {
     if (isAuthenticated) {
-      const loadData = async () => {
-        setLoading(true);
-        await fetchContactLists();
-        setLoading(false);
-      };
-      
-      loadData();
+      fetchContactLists();
     } else {
       setContacts([]);
       setContactLists([]);
@@ -482,6 +530,7 @@ export function useContactManagement() {
     
     // Methods
     fetchContactLists,
+    refreshContactLists,
     fetchContacts,
     createContactList,
     updateContactList,

@@ -5,7 +5,7 @@ export interface Contact {
   _id: string;
   contactList: string;
   phoneNumber: string;
-  countryCode: string;
+  // countryCode: string;
   firstName?: string;
   lastName?: string;
   email?: string;

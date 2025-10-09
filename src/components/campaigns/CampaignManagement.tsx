@@ -83,6 +83,8 @@ export function CampaignManagement() {
     contactLists,
     createContactList,
     deleteContactList,
+    updateContactList,
+    refreshContactLists
   } = useContactManagement();
 
   // Use Zustand socket store
@@ -294,6 +296,7 @@ export function CampaignManagement() {
 
     try {
       await contactAPI.createList({ name: contactListName });
+      await refreshContactLists();
       setIsCreateContactListOpen(false);
       setContactListName('');
       toast.success('Contact list created successfully');
