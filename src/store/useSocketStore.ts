@@ -79,6 +79,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     });
 
     // Handle real-time SMS reception
+    // In your useSocketStore.ts - Complete sms-received handler
     socket.on('sms-received', (data: any) => {
       console.log('Received real-time SMS via user room:', data);
       
@@ -87,15 +88,18 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         setMessages, 
         fetchConversations,
         currentConversation,
-        selectedDevice 
+        selectedDevice,
+        //shouldUpdateCurrentConversation,
+        updateCurrentConversationWithMessage,
+        fetchConversation
       } = useMessagesStore.getState();
-    
+
       // Add new message to messages list
-      const newMessage = {
-        id: data._id || data.id,
-        port: data.port,
-        slot: data.slot,
-        timestamp: data.timestamp,
+      const newMessage: any = {
+        id: data._id || data.id || `msg-${Date.now()}-${Math.random()}`,
+        port: data.port || data.sim?.port,
+        slot: data.slot || data.sim?.slot,
+        timestamp: data.timestamp || new Date().toISOString(),
         from: data.from,
         to: data.to,
         sms: data.sms,
@@ -103,20 +107,20 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         direction: data.direction || 'inbound',
         read: data.read || false,
         isReport: data.isReport || false,
-        sim: data.sim
+        sim: data.sim || { port: data.port, slot: data.slot }
       };
-    
+
+      console.log('Processed new message:', newMessage);
+
       // Update messages list (new messages at top)
       const updatedMessages = [newMessage, ...messages];
       setMessages(updatedMessages);
-    
+
       // Refresh conversations to include new message
       if (selectedDevice) {
         fetchConversations(selectedDevice._id);
       }
-      console.log("currentConversation",currentConversation)
-      console.log("data",data)
-    
+
       // Check if the new message belongs to the current conversation
       const shouldUpdateCurrentConversation = currentConversation && 
         (
@@ -124,29 +128,82 @@ export const useSocketStore = create<SocketState>((set, get) => ({
           (data.direction === 'inbound' && currentConversation.phoneNumber === data.from) ||
           (data.direction === 'outbound' && currentConversation.phoneNumber === data.to)
         ) &&
-        currentConversation.port === (data.sim.port || data.port) &&
-        currentConversation.slot === (data.sim.slot || data.slot);
-    
+        currentConversation.port === (data.sim?.port || data.port) &&
+        currentConversation.slot === (data.sim?.slot || data.slot);
+
+      console.log('Should update current conversation:', shouldUpdateCurrentConversation, {
+        currentConversation,
+        newMessageDirection: data.direction,
+        currentPhone: currentConversation?.phoneNumber,
+        messageFrom: data.from,
+        messageTo: data.to,
+        portMatch: currentConversation?.port === (data.sim?.port || data.port),
+        slotMatch: currentConversation?.slot === (data.sim?.slot || data.slot)
+      });
+
       // If current conversation matches the new message, update it
       if (shouldUpdateCurrentConversation && selectedDevice) {
-        // Refresh the current conversation
-        useMessagesStore.getState().fetchConversation(
-          currentConversation.phoneNumber, 
-          data.port, 
-          data.slot, 
-          selectedDevice._id
-        );
+        console.log('Updating current conversation with new message');
+        
+        // Method 1: Update locally for immediate UI update
+        if (currentConversation) {
+          const updatedConversation: any = {
+            ...currentConversation,
+            lastMessage: newMessage.sms,
+            lastTimestamp: newMessage.timestamp,
+            unreadCount: newMessage.direction === 'inbound' && !newMessage.read ? 
+              currentConversation.unreadCount + 1 : currentConversation.unreadCount,
+            messageCount: currentConversation.messageCount + 1,
+            messages: [...currentConversation.messages, newMessage] // Add to end for chronological order
+          };
+          useMessagesStore.getState().setCurrentConversation(updatedConversation);
+        }
+        
+        // Method 2: Alternatively, refresh the entire conversation from server
+        // useMessagesStore.getState().fetchConversation(
+        //   currentConversation.phoneNumber, 
+        //   data.port, 
+        //   data.slot, 
+        //   selectedDevice._id
+        // );
+      } else if (currentConversation) {
+        console.log('Message does not belong to current conversation', {
+          currentPhone: currentConversation.phoneNumber,
+          messageFrom: data.from,
+          messageTo: data.to,
+          direction: data.direction
+        });
       }
-    
-      // Get current active section from App state to check if user is on inbox
-      const isUserOnInbox = window.__ACTIVE_SECTION__ === 'inbox';
 
-    
-      // Only show toast if user is NOT on inbox section
-      if (!isUserOnInbox) {
+      // Get current active section from App state to check if user is on inbox
+      const isUserOnInbox = window.location.pathname.includes('inbox') || 
+                          window.__ACTIVE_SECTION__ === 'inbox';
+
+      console.log('User on inbox section:', isUserOnInbox);
+
+      // Only show toast if user is NOT on inbox section OR if not viewing this specific conversation
+      const isViewingThisConversation = shouldUpdateCurrentConversation;
+      
+      if (!isUserOnInbox || !isViewingThisConversation) {
         toast.info(`New message from ${data.from}`, {
           description: data.sms ? decodeBase64(data.sms).substring(0, 50) + (decodeBase64(data.sms).length > 50 ? '...' : '') : 'No content',
           duration: 5000,
+          action: {
+            label: 'View',
+            onClick: () => {
+              // Navigate to inbox or focus the app
+              if (selectedDevice) {
+                useMessagesStore.getState().fetchConversation(
+                  data.from, 
+                  data.port, 
+                  data.slot, 
+                  selectedDevice._id
+                );
+                // You might want to add navigation logic here
+                // window.location.href = '/inbox';
+              }
+            }
+          }
         });
       }
     });

@@ -55,7 +55,8 @@ export function Inbox() {
     markAsRead,
     sendSMS,
     fetchConversations,
-    fetchConversation
+    fetchConversation,
+    markConversationAsRead
   } = useMessagesStore();
 
   // Manual sync handler
@@ -93,14 +94,23 @@ export function Inbox() {
   console.log("currentConversation",currentConversation)
 
   const handleConversationClick = async (conversation: any) => {
-    if (!selectedDevice) return;
+    if (!selectedDevice) {
+      toast.error('No device selected');
+      return;
+    }
     
+    // Fetch the conversation first
     await fetchConversation(
       conversation.phoneNumber, 
       conversation.port, 
       conversation.slot, 
       selectedDevice._id
     );
+    
+    // Mark THIS conversation as read in frontend state
+    if (conversation.unreadCount > 0) {
+      markConversationAsRead(conversation.phoneNumber, conversation.port, conversation.slot);
+    }
   };
 
 
@@ -494,6 +504,7 @@ export function Inbox() {
               </CardHeader>
 
               <CardContent className="flex-1 flex flex-col p-0">
+                {/* Conversation Messages */}
                 {/* Conversation Messages */}
                 <div className="flex-1 p-4 space-y-4 overflow-y-auto max-h-[500px]">
                   {currentConversation.messages.length === 0 ? (

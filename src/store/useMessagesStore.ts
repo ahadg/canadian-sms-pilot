@@ -79,6 +79,8 @@ interface MessagesState {
   filterMessages: (activeTab: string) => void;
   shouldUpdateCurrentConversation: (message: ReceivedSMS) => boolean;
   updateCurrentConversationWithMessage: (message: ReceivedSMS) => void;
+  markConversationAsRead: (phoneNumber: string, port: number, slot: number) => void;
+
 }
 
 const initialFilters: InboxFilters = {
@@ -169,23 +171,34 @@ export const useMessagesStore = create<MessagesState>()(
           const response = await authFetch(
             `/api/sms/conversation?phoneNumber=${phoneNumber}&port=${port}&slot=${slot}&deviceId=${deviceId}`
           );
-          console.log("fetchConversation",response)
+          
+          console.log("fetchConversation response:", response);
+          
           if (response.code !== 200) {
             throw new Error('Failed to fetch conversation');
           }
-
-          const conversation: Conversation = {
+      
+          // Ensure we have messages array
+          const messages = response.data.messages || response.data || [];
+          
+          // Sort messages by timestamp (oldest first for proper display)
+          const sortedMessages = messages.sort((a: ReceivedSMS, b: ReceivedSMS) => 
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+      
+          const conversation: any = {
             phoneNumber,
             port,
             slot,
-            lastMessage: response.data.messages[response.data.messages.length - 1]?.sms || '',
-            lastTimestamp: response.data.messages[response.data.messages.length - 1]?.timestamp || '',
-            unreadCount: 0, // All messages are marked as read when fetched
-            messageCount: response.data.messages.length,
-            simId: '', // This would come from backend
-            messages: response.data.messages
+            lastMessage: sortedMessages.length > 0 ? sortedMessages[sortedMessages.length - 1].sms : '',
+            lastTimestamp: sortedMessages.length > 0 ? sortedMessages[sortedMessages.length - 1].timestamp : '',
+            unreadCount: sortedMessages.filter((msg: ReceivedSMS) => !msg.read && msg.direction === 'inbound').length,
+            messageCount: sortedMessages.length,
+            messages: sortedMessages,
+            contact: response.data.contact || { isReport: false }
           };
-
+      
+          console.log("Processed conversation:", conversation);
           set({ currentConversation: conversation });
           
         } catch (error) {
@@ -465,6 +478,32 @@ export const useMessagesStore = create<MessagesState>()(
         } finally {
           set({ isSyncing: false });
         }
+      },
+      markConversationAsRead: (phoneNumber: string, port: number, slot: number) => {
+        const { messages, setMessages, conversations, setConversations } = get();
+        
+        // Update messages - mark as read only for this specific conversation
+        const updatedMessages = messages.map(msg => 
+          ((msg.direction === 'inbound' && msg.from === phoneNumber) ||
+           (msg.direction === 'outbound' && msg.to === phoneNumber)) &&
+          msg.port === port &&
+          msg.slot === slot &&
+          !msg.read
+            ? { ...msg, read: true }
+            : msg
+        );
+        
+        // Update conversations - reset unread count only for this specific conversation
+        const updatedConversations = conversations.map(conv =>
+          conv.phoneNumber === phoneNumber &&
+          conv.port === port &&
+          conv.slot === slot
+            ? { ...conv, unreadCount: 0 }
+            : conv
+        );
+        
+        setMessages(updatedMessages);
+        setConversations(updatedConversations);
       },
 
     }),
