@@ -10,6 +10,8 @@ import {
   Zap,
   MessageSquare,
   LogOut,
+  MessageCircle,
+  MessageCircleMore
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 interface SidebarProps {
@@ -51,7 +53,7 @@ const navigationItems = [
   {
     id: "inbox",
     label: "inbox",
-    icon: BarChart3,
+    icon: MessageCircleMore,
     description: "Reports & insights",
   },
 ];

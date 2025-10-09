@@ -95,9 +95,9 @@ const CATEGORY_OPTIONS = ['Promotional', 'Transactional', 'Reminder', 'Welcome',
 // MongoDB database operations using your API routes
 const messageDatabase = {
   // Save message with variants
-  saveMessage: async (message: Omit<SavedMessage, '_id' | 'id' | 'createdAt' | 'updatedAt'>): Promise<SavedMessage> => {
+  saveMessage: async (message: any): Promise<any> => {
     try {
-      const response = await messageAPI.create({
+      let response = await messageAPI.create({
         name: message.name,
         category: message.category,
         originalPrompt: message.originalPrompt,
@@ -106,7 +106,7 @@ const messageDatabase = {
         isTemplate: message.isTemplate,
         variants: message.variants
       });
-
+      response = response.data;
       console.log("saveMessage_response",response)
 
       await messageAPI.createVariant(response.message._id, message.variants);
@@ -116,13 +116,13 @@ const messageDatabase = {
         id: response.message._id,
         name: response.message.name,
         category: response.message.category,
-        originalPrompt: response.data.message.originalPrompt,
+        originalPrompt: response.message.originalPrompt,
         baseMessage: response.message.baseMessage,
         variants: message.variants,
         settings: response.message.settings,
-        createdAt: response.data.message.createdAt,
-        updatedAt: response.data.message.updatedAt,
-        isTemplate: response.data.message.isTemplate,
+        createdAt: response.message.createdAt,
+        updatedAt: response.message.updatedAt,
+        isTemplate: response.message.isTemplate,
       };
     } catch (error) {
       console.error('Error saving message:', error);
@@ -131,9 +131,9 @@ const messageDatabase = {
   },
 
   // Update message with variants
-  updateMessage: async (id: string, message: Partial<SavedMessage>): Promise<SavedMessage> => {
+  updateMessage: async (id: string, message: Partial<any>): Promise<any> => {
     try {
-      const response = await messageAPI.update(id, {
+      let response = await messageAPI.update(id, {
         name: message.name,
         category: message.category,
         originalPrompt: message.originalPrompt,
@@ -142,19 +142,19 @@ const messageDatabase = {
         isTemplate: message.isTemplate,
         variants: message.variants
       });
-
+      response = response.data;
       return {
-        _id: response.data.message._id,
-        id: response.data.message._id,
-        name: response.data.message.name,
-        category: response.data.message.category,
-        originalPrompt: response.data.message.originalPrompt,
-        baseMessage: response.data.message.baseMessage,
+        _id: response.message._id,
+        id: response.message._id,
+        name: response.message.name,
+        category: response.message.category,
+        originalPrompt: response.message.originalPrompt,
+        baseMessage: response.message.baseMessage,
         variants: message.variants || [],
-        settings: response.data.message.settings,
-        createdAt: response.data.message.createdAt,
-        updatedAt: response.data.message.updatedAt,
-        isTemplate: response.data.message.isTemplate,
+        settings: response.message.settings,
+        createdAt: response.message.createdAt,
+        updatedAt: response.message.updatedAt,
+        isTemplate: response.message.isTemplate,
       };
     } catch (error) {
       console.error('Error updating message:', error);
@@ -166,6 +166,7 @@ const messageDatabase = {
   getAllMessages: async (): Promise<SavedMessage[]> => {
     try {
       const response = await messageAPI.getAll();
+      console.log("response_messages_with_variants",response)
       return response.data.messages.map((message: any) => ({
         _id: message._id,
         id: message._id,
@@ -228,57 +229,29 @@ export function AIMessages() {
   };
 
   const generateVariants = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || !messageName.trim()) return;
     
     setIsGenerating(true);
     
     try {
-      // Simulate AI generation - In a real app, you'd call your AI API here
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const tones = settings.tones.length > 0 ? settings.tones : ['Professional'];
-      const languages = settings.languages.length > 0 ? settings.languages : ['English'];
-      
-      const mockVariants: MessageVariant[] = [];
-      
-      for (let i = 0; i < settings.variantCount; i++) {
-        const tone = tones[i % tones.length];
-        const language = languages[i % languages.length];
-        
-        let content = '';
-        
-        // Generate different content based on tone
-        if (tone === 'Professional') {
-          content = `${settings.companyName}: Professional offer details here. Limited time promotion. ${settings.unsubscribeText}`;
-        } else if (tone === 'Friendly') {
-          content = `Hi there! ${settings.companyName} has something special for you ${settings.includeEmojis ? '😊' : ''}. Check it out! ${settings.unsubscribeText}`;
-        } else if (tone === 'Urgent') {
-          content = `⏰ URGENT: ${settings.companyName} - Limited time offer expires soon! Act now. ${settings.unsubscribeText}`;
-        } else if (tone === 'Casual') {
-          content = `Hey! ${settings.companyName} here with a sweet deal ${settings.includeEmojis ? '🔥' : ''}. Don't miss out! ${settings.unsubscribeText}`;
-        }
-        
-        // Adjust for character limit
-        if (content.length > settings.characterLimit) {
-          content = content.substring(0, settings.characterLimit - 3) + '...';
-        }
-        
-        mockVariants.push({
-          id: `variant-${Date.now()}-${i}`,
-          content,
-          tone,
-          language,
-          characterCount: content.length,
-          spamScore: Math.random() * 5,
-          encoding: settings.includeEmojis ? 'Unicode' : 'GSM-7',
-          cost: settings.includeEmojis ? 2 : 1,
-          createdAt: new Date().toISOString()
-        });
-      }
-
-      setGeneratedVariants(mockVariants);
+      const response = await messageAPI.generateVariants({
+        prompt,
+        variantCount: settings.variantCount,
+        characterLimit: settings.characterLimit,
+        tones: settings.tones,
+        languages: settings.languages,
+        creativityLevel: settings.creativityLevel,
+        includeEmojis: settings.includeEmojis,
+        companyName: settings.companyName,
+        unsubscribeText: settings.unsubscribeText,
+        customInstructions: settings.customInstructions
+      });
+  
+      setGeneratedVariants(response.data.variants);
     } catch (error) {
       console.error('Failed to generate variants:', error);
+      // You can add a toast notification here
+      alert('Failed to generate variants. Please try again.');
     } finally {
       setIsGenerating(false);
     }
@@ -423,16 +396,6 @@ export function AIMessages() {
           <p className="text-muted-foreground">
             Create intelligent SMS messages with AI-powered variants for your campaigns
           </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => resetForm()}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Message
-          </Button>
-          <Button size="sm" className="bg-gradient-to-r from-blue-500 to-purple-600 text-white">
-            <Target className="h-4 w-4 mr-2" />
-            Use in Campaign
-          </Button>
         </div>
       </div>
 
@@ -657,15 +620,7 @@ export function AIMessages() {
                             )}
                             Save Message
                           </Button>
-                          <Button 
-                            onClick={() => saveMessage(true)} 
-                            disabled={isSaving || !messageName.trim()}
-                            variant="outline" 
-                            size="sm"
-                          >
-                            <FileText className="h-4 w-4 mr-2" />
-                            Save as Template
-                          </Button>
+                         
                         </div>
                       </div>
                       
@@ -870,94 +825,6 @@ export function AIMessages() {
           </div>
         </TabsContent>
 
-        <TabsContent value="templates" className="space-y-6">
-          <div className="grid gap-4">
-            {templates.length === 0 ? (
-              <Card>
-                <CardContent className="p-8 text-center">
-                  <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <h3 className="text-lg font-semibold mb-2">No templates yet</h3>
-                  <p className="text-muted-foreground mb-4">Save your best messages as templates for quick reuse</p>
-                  <Button onClick={() => setActiveTab('generate')}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Template
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              templates.map((template) => (
-                <Card key={template._id} className="border-l-4 border-l-blue-500">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="flex items-center gap-2">
-                        <FileText className="h-5 w-5" />{template.name}
-                      </CardTitle>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => loadTemplate(template)}>
-                          <Edit3 className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => deleteMessage(template._id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div>
-                        <Label className="text-sm font-medium">Original Prompt</Label>
-                        <p className="text-sm text-muted-foreground mt-1">{template.originalPrompt}</p>
-                      </div>
-                      
-                      <div>
-                        <Label className="text-sm font-medium">Message Variants ({template.variants.length})</Label>
-                        <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
-                          {template.variants.slice(0, 2).map((variant, index) => (
-                            <div key={variant.id} className="p-2 border rounded-md">
-                              <div className="flex justify-between items-start mb-1">
-                                <div className="flex gap-1 flex-wrap">
-                                  <Badge className="text-xs">#{index + 1}</Badge>
-                                  <Badge variant="secondary" className={getToneColor(variant.tone)}>
-                                    {variant.tone}
-                                  </Badge>
-                                  <Badge variant="outline" className="text-xs">
-                                    {variant.characterCount} chars
-                                  </Badge>
-                                </div>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm"
-                                  onClick={() => copyToClipboard(variant.content)}
-                                >
-                                  <Copy className="h-3 w-3" />
-                                </Button>
-                              </div>
-                              <p className="text-xs bg-muted p-2 rounded">{variant.content}</p>
-                            </div>
-                          ))}
-                          {template.variants.length > 2 && (
-                            <div className="text-center">
-                              <Button variant="ghost" size="sm" onClick={() => loadTemplate(template)}>
-                                View all {template.variants.length} variants
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="flex justify-between text-xs text-muted-foreground pt-2 border-t">
-                        <span>Created: {new Date(template.createdAt).toLocaleDateString()}</span>
-                        <Button variant="outline" size="sm" onClick={() => loadTemplate(template)}>
-                          Use Template
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </TabsContent>
       </Tabs>
     </div>
   );

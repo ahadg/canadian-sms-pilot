@@ -40,29 +40,6 @@ interface DeviceStatusProps {
   devices?: DeviceData[];
 }
 
-// Fallback mock data in case API fails
-const mockDevices: DeviceData[] = [
-  {
-    _id: "ejoin-001",
-    name: "Ejoin Gateway 001",
-    status: "online",
-    totalSlots: 512,
-    activeSlots: 487,
-    location: "Toronto, ON",
-    lastSeen: new Date().toISOString(),
-    dailyUsage: { sent: 12450, limit: 15000 },
-  },
-  {
-    _id: "ejoin-002", 
-    name: "Ejoin Gateway 002",
-    status: "warning",
-    totalSlots: 512,
-    activeSlots: 356,
-    location: "Vancouver, BC",
-    lastSeen: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    dailyUsage: { sent: 8920, limit: 12000 },
-  },
-];
 
 export function DeviceStatus({ devices: propDevices }: DeviceStatusProps) {
   const [devices, setDevices] = useState<DeviceData[]>(propDevices || []);

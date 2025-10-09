@@ -1,8 +1,10 @@
-// store/useSocketStore.ts - Clean version without notifications
+// store/useSocketStore.ts - Simplified version
 import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from './useAuthStore';
 import { useNotificationStore } from './useNotificationStore';
+import { decodeBase64, useMessagesStore } from './useMessagesStore';
+import { toast } from 'sonner';
 
 interface SocketState {
   socket: Socket | null;
@@ -25,6 +27,13 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   connect: () => {
     const { user, token } = useAuthStore.getState();
     const { addNotification, fetchNotifications } = useNotificationStore.getState();
+    const { 
+      messages, 
+      setMessages, 
+      fetchConversations,
+      currentConversation,
+      selectedDevice 
+    } = useMessagesStore.getState();
     
     if (!user || !token) {
       console.warn('No user or token available for socket connection');
@@ -51,10 +60,11 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       console.log('Socket connected successfully');
       set({ isConnected: true });
       
-      // Join user-specific room
+      // Join user-specific room only
       socket.emit('join-user-room', user._id);
+      console.log(`Joined user room: user:${user._id}`);
       
-      // Fetch initial notifications through notification store
+      // Fetch initial notifications
       fetchNotifications();
     });
 
@@ -66,6 +76,65 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     socket.on('connect_error', (error) => {
       console.error('Socket connection error:', error);
       set({ isConnected: false });
+    });
+
+    // Handle real-time SMS reception
+    socket.on('sms-received', (data: any) => {
+      console.log('Received real-time SMS via user room:', data);
+      
+      const { 
+        messages, 
+        setMessages, 
+        fetchConversations,
+        currentConversation,
+        selectedDevice 
+      } = useMessagesStore.getState();
+
+      // Add new message to messages list
+      const newMessage = {
+        id: data._id || data.id,
+        port: data.port,
+        slot: data.slot,
+        timestamp: data.timestamp,
+        from: data.from,
+        to: data.to,
+        sms: data.sms,
+        status: data.status || 'delivered',
+        direction: data.direction || 'inbound',
+        read: data.read || false,
+        isReport: data.isReport || false,
+        sim: data.sim
+      };
+
+      // Update messages list (new messages at top)
+      const updatedMessages = [newMessage, ...messages];
+      setMessages(updatedMessages);
+
+      // Refresh conversations to include new message
+      if (selectedDevice) {
+        fetchConversations(selectedDevice._id);
+      }
+
+      // If current conversation matches the new message, update it
+      if (currentConversation && 
+          currentConversation.phoneNumber === data.from &&
+          currentConversation.port === data.port &&
+          currentConversation.slot === data.slot) {
+        
+        // Refresh the current conversation
+        useMessagesStore.getState().fetchConversation(
+          data.from, 
+          data.port, 
+          data.slot, 
+          selectedDevice?._id || ''
+        );
+      }
+
+      // Show toast notification for new message
+      toast.info(`New message from ${data.from}`, {
+        description: data.sms ? decodeBase64(data.sms).substring(0, 50) + (decodeBase64(data.sms).length > 50 ? '...' : '') : 'No content',
+        duration: 5000,
+      });
     });
 
     socket.on('campaign-update', (data: any) => {

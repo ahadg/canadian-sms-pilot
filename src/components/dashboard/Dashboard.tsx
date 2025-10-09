@@ -127,9 +127,9 @@ export function Dashboard() {
             trend={{ value: 8.7, label: "growth" }}
           />
           <StatsCard
-            title="Cost Today"
-            value={`$${stats.totalCostToday || '0.00'}`}
-            description="SMS spending"
+            title="Avg Sms Today"
+            value={`${stats.averageProcessingTimeToday / 1000 || '0.00'} sec`}
+            description="Avg Sms sending"
             icon={DollarSign}
             variant="default"
             trend={{ value: -12.5, label: "vs yesterday" }}
@@ -232,7 +232,7 @@ export function Dashboard() {
           <DeviceStatus devices={devices} />
           
           {/* Campaign Progress */}
-          <Card>
+          {/* <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
@@ -265,7 +265,7 @@ export function Dashboard() {
                 </div>
               )}
             </CardContent>
-          </Card>
+          </Card> */}
         </div>
 
         {/* Right Sidebar */}

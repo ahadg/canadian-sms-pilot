@@ -230,8 +230,8 @@ export function CampaignActions({campaign, devices,isConnected,
                                     <p className="text-2xl font-bold text-red-600">{selectedCampaign?.failedMessages || 0}</p>
                                 </div>
                                 <div className="space-y-1">
-                                    <p className="text-sm text-muted-foreground">Cost</p>
-                                    <p className="text-2xl font-bold">{selectedCampaign?.cost || 0}</p>
+                                    <p className="text-sm text-muted-foreground">Average Processing Time</p>
+                                    <p className="text-2xl font-bold">{selectedCampaign?.averageProcessingTime / 1000 || 0} sec</p>
                                 </div>
                             </div>
                         </div>

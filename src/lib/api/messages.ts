@@ -26,6 +26,25 @@ export interface SavedMessage {
   isTemplate: boolean;
 }
 
+export interface GenerationRequest {
+  prompt: string;
+  variantCount?: number;
+  characterLimit?: number;
+  tones?: string[];
+  languages?: string[];
+  creativityLevel?: number;
+  includeEmojis?: boolean;
+  companyName: string;
+  unsubscribeText?: string;
+  customInstructions?: string;
+}
+
+export interface GenerateAndSaveRequest extends GenerationRequest {
+  name: string;
+  category?: string;
+  isTemplate?: boolean;
+}
+
 export const messageAPI = {
   // Get all messages
   getAll: async (params?: any) => {
@@ -41,7 +60,7 @@ export const messageAPI = {
 
   // Create new message
   create: async (data: any) => {
-    return authFetch<{ message: SavedMessage }>('/api/messages', {
+    return authFetch<any>('/api/messages', {
       method: 'POST',
       data: JSON.stringify(data)
     });
@@ -49,7 +68,7 @@ export const messageAPI = {
 
   // Update message
   update: async (id: string, data: any) => {
-    return authFetch<{ message: SavedMessage }>(`/api/messages/${id}`, {
+    return authFetch<any>(`/api/messages/${id}`, {
       method: 'PUT',
       data: JSON.stringify(data)
     });
@@ -100,6 +119,33 @@ export const messageAPI = {
   deleteTemplate: async (id: string) => {
     return authFetch(`/api/messages/templates/${id}`, {
       method: 'DELETE'
+    });
+  },
+
+  // ============ AI Generation Methods ============
+
+  // Generate variants using AI
+  generateVariants: async (data: GenerationRequest) => {
+    return authFetch<{ 
+      data: { 
+        variants: MessageVariant[] 
+      } 
+    }>('/api/messages/ai/generate', {
+      method: 'POST',
+      data: JSON.stringify(data)
+    });
+  },
+
+  // Generate variants and save message in one operation
+  generateAndSave: async (data: GenerateAndSaveRequest) => {
+    return authFetch<{ 
+      data: { 
+        message: SavedMessage,
+        variants: MessageVariant[]
+      } 
+    }>('/api/messages/ai/generate-and-save', {
+      method: 'POST',
+      data: JSON.stringify(data)
     });
   }
 };
