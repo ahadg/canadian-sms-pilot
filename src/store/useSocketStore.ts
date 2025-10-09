@@ -89,7 +89,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         currentConversation,
         selectedDevice 
       } = useMessagesStore.getState();
-
+    
       // Add new message to messages list
       const newMessage = {
         id: data._id || data.id,
@@ -105,36 +105,50 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         isReport: data.isReport || false,
         sim: data.sim
       };
-
+    
       // Update messages list (new messages at top)
       const updatedMessages = [newMessage, ...messages];
       setMessages(updatedMessages);
-
+    
       // Refresh conversations to include new message
       if (selectedDevice) {
         fetchConversations(selectedDevice._id);
       }
-
+      console.log("currentConversation",currentConversation)
+      console.log("data",data)
+    
+      // Check if the new message belongs to the current conversation
+      const shouldUpdateCurrentConversation = currentConversation && 
+        (
+          // Check if same phone number (considering both inbound and outbound)
+          (data.direction === 'inbound' && currentConversation.phoneNumber === data.from) ||
+          (data.direction === 'outbound' && currentConversation.phoneNumber === data.to)
+        ) &&
+        currentConversation.port === (data.sim.port || data.port) &&
+        currentConversation.slot === (data.sim.slot || data.slot);
+    
       // If current conversation matches the new message, update it
-      if (currentConversation && 
-          currentConversation.phoneNumber === data.from &&
-          currentConversation.port === data.port &&
-          currentConversation.slot === data.slot) {
-        
+      if (shouldUpdateCurrentConversation && selectedDevice) {
         // Refresh the current conversation
         useMessagesStore.getState().fetchConversation(
-          data.from, 
+          currentConversation.phoneNumber, 
           data.port, 
           data.slot, 
-          selectedDevice?._id || ''
+          selectedDevice._id
         );
       }
+    
+      // Get current active section from App state to check if user is on inbox
+      const isUserOnInbox = window.__ACTIVE_SECTION__ === 'inbox';
 
-      // Show toast notification for new message
-      toast.info(`New message from ${data.from}`, {
-        description: data.sms ? decodeBase64(data.sms).substring(0, 50) + (decodeBase64(data.sms).length > 50 ? '...' : '') : 'No content',
-        duration: 5000,
-      });
+    
+      // Only show toast if user is NOT on inbox section
+      if (!isUserOnInbox) {
+        toast.info(`New message from ${data.from}`, {
+          description: data.sms ? decodeBase64(data.sms).substring(0, 50) + (decodeBase64(data.sms).length > 50 ? '...' : '') : 'No content',
+          duration: 5000,
+        });
+      }
     });
 
     socket.on('campaign-update', (data: any) => {

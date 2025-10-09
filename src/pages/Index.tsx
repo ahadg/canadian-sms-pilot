@@ -28,6 +28,12 @@ import {
   Loader2
 } from "lucide-react";
 
+declare global {
+  interface Window {
+    __ACTIVE_SECTION__: string;
+  }
+}
+
 function AppContent() {
   const [activeSection, setActiveSection] = useState("dashboard");
   const [showNotifications, setShowNotifications] = useState(false);
@@ -52,6 +58,10 @@ function AppContent() {
     // Check authentication status on app load
     checkAuth();
   }, [checkAuth]);
+
+  useEffect(() => {
+    window.__ACTIVE_SECTION__ = activeSection;
+  }, [activeSection]);
 
   // Connect to socket when authenticated
   useEffect(() => {

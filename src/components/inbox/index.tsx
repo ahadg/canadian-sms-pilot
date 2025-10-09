@@ -90,6 +90,8 @@ export function Inbox() {
     }
   };
 
+  console.log("currentConversation",currentConversation)
+
   const handleConversationClick = async (conversation: any) => {
     if (!selectedDevice) return;
     

@@ -77,6 +77,8 @@ interface MessagesState {
   markAsRead: (messageId: string) => Promise<void>;
   clearFilters: () => void;
   filterMessages: (activeTab: string) => void;
+  shouldUpdateCurrentConversation: (message: ReceivedSMS) => boolean;
+  updateCurrentConversationWithMessage: (message: ReceivedSMS) => void;
 }
 
 const initialFilters: InboxFilters = {
@@ -89,7 +91,7 @@ const initialFilters: InboxFilters = {
 
 
 interface SendSMSParams {
-  deviceId: string;
+  device: object;
   port: number;
   slot: number;
   to: string;
@@ -104,6 +106,9 @@ interface Conversation {
   lastTimestamp: string;
   unreadCount: number;
   messages: ReceivedSMS[];
+  contact?: {
+    isReport: boolean;
+  };
 }
 
 export const useMessagesStore = create<MessagesState>()(
@@ -382,6 +387,42 @@ export const useMessagesStore = create<MessagesState>()(
 
         set({ filteredMessages: filtered });
       },
+      // In your store implementation, add these methods:
+      shouldUpdateCurrentConversation: (message: ReceivedSMS) => {
+        const { currentConversation } = get();
+        if (!currentConversation) return false;
+
+        // Check if message belongs to current conversation
+        const isSameConversation = 
+          // For inbound messages, check if from matches conversation phone number
+          (message.direction === 'inbound' && currentConversation.phoneNumber === message.from) ||
+          // For outbound messages, check if to matches conversation phone number
+          (message.direction === 'outbound' && currentConversation.phoneNumber === message.to) &&
+          // Check same SIM (port and slot)
+          currentConversation.port === message.port &&
+          currentConversation.slot === message.slot;
+
+        return isSameConversation;
+      },
+
+      updateCurrentConversationWithMessage: (message: ReceivedSMS) => {
+        const { currentConversation, setCurrentConversation } = get();
+        if (!currentConversation) return;
+
+        // Create updated conversation with new message
+        const updatedConversation: Conversation = {
+          ...currentConversation,
+          lastMessage: message.sms,
+          lastTimestamp: message.timestamp,
+          unreadCount: message.direction === 'inbound' && !message.read ? 
+            currentConversation.unreadCount + 1 : currentConversation.unreadCount,
+          messageCount: currentConversation.messageCount + 1,
+          messages: [message, ...currentConversation.messages]
+        };
+
+        setCurrentConversation(updatedConversation);
+      },
+
 
       // Async Actions
       fetchDevices: async () => {
