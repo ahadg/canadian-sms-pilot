@@ -14,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { useContactManagement, type ContactFilters } from "@/hooks/useContactManagement";
+import { useContactStore, type ContactFilters, type Contact, type ContactList } from "@/store/useContactStore";
 import { toast } from "sonner";
 
 interface ContactManagerProps {
@@ -45,13 +45,13 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
     exportContacts,
     refreshContactLists,
     searchContacts
-  } = useContactManagement();
+  } = useContactStore();
 
   const [activeTab, setActiveTab] = useState<"view" | "add" | "import">("view");
   const [filters, setFilters] = useState<ContactFilters>({});
   const [searchInput, setSearchInput] = useState("");
-  const [filteredContacts, setFilteredContacts] = useState<any[]>([]);
-  const [editableContacts, setEditableContacts] = useState<any[]>([]);
+  const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
+  const [editableContacts, setEditableContacts] = useState<(Contact & { isEditing: boolean; tempData: any })[]>([]);
   const [newContact, setNewContact] = useState<NewContactForm>({
     phoneNumber: '',
     firstName: '',
@@ -60,7 +60,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
     optedIn: true,
   });
 
-  const currentContactList = contactLists.find((list: any) => list._id === contactListId);
+  const currentContactList = contactLists.find((list: ContactList) => list._id === contactListId);
 
   // Load contacts when dialog opens or contact list changes
   useEffect(() => {
@@ -68,7 +68,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
       loadContacts();
       refreshContactLists(); // Refresh lists to get latest counts
     }
-  }, [open, contactListId]);
+  }, [open, contactListId]); // Removed loadContacts from dependencies
 
   // Update filtered contacts when contacts, search, or filters change
   useEffect(() => {
@@ -127,7 +127,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
       
       if (result.failed > 0) {
         toast.warning(`Imported ${result.success} contacts, ${result.failed} failed`, {
-          description: result.errors.slice(0, 3).join(', ') + (result.errors.length > 3 ? '...' : '')
+          description: result.errors.slice(0, 3).map(err => err.error).join(', ') + (result.errors.length > 3 ? '...' : '')
         });
       } else {
         toast.success(`Successfully imported ${result.success} contacts`);
@@ -220,13 +220,11 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
   };
 
   const handleDeleteContact = async (contactId: string) => {
-    if (!confirm('Are you sure you want to delete this contact?')) return;
-
     try {
       await deleteContact(contactId);
       toast.success('Contact deleted successfully');
-      await loadContacts();
-      await refreshContactLists();
+      //await loadContacts();
+      //await refreshContactLists();
     } catch (error: any) {
       toast.error(error.message || 'Failed to delete contact');
     }
@@ -318,7 +316,6 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
                       <SelectValue placeholder="Opt-in Status" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* <SelectItem value="">All Status</SelectItem> */}
                       <SelectItem value="true">Opted In</SelectItem>
                       <SelectItem value="false">Opted Out</SelectItem>
                     </SelectContent>

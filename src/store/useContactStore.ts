@@ -1,9 +1,9 @@
-// hooks/useContactManagement.ts
-import { useState, useCallback, useEffect } from 'react';
-import { useAuthStore } from "@/store/useAuthStore";
+// store/useContactStore.ts
+import { create } from 'zustand';
 import { toast } from 'sonner';
 import { parse } from 'papaparse';
 import { contactAPI } from '../lib/api/contacts';
+import { useAuthStore } from './useAuthStore';
 
 export interface Contact {
   _id: string;
@@ -54,65 +54,95 @@ export interface ContactFilters {
   limit?: number;
 }
 
-export function useContactManagement() {
-  const { user, isAuthenticated } = useAuthStore();
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [contactLists, setContactLists] = useState<ContactList[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [pagination, setPagination] = useState({
+interface ContactState {
+  // State
+  contacts: Contact[];
+  contactLists: ContactList[];
+  loading: boolean;
+  importing: boolean;
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    total: number;
+    limit: number;
+  };
+
+  // Actions
+  fetchContactLists: () => Promise<ContactList[]>;
+  refreshContactLists: () => Promise<void>;
+  fetchContacts: (contactListId: string, filters?: ContactFilters) => Promise<Contact[]>;
+  createContactList: (name: string, description?: string) => Promise<ContactList>;
+  updateContactList: (id: string, updates: Partial<ContactList>) => Promise<ContactList>;
+  deleteContactList: (id: string) => Promise<void>;
+  addContact: (contactListId: string, contactData: any) => Promise<Contact>;
+  updateContact: (contactId: string, updates: Partial<Contact>) => Promise<Contact>;
+  deleteContact: (contactId: string) => Promise<void>;
+  importContactsFromFile: (contactListId: string, file: File) => Promise<ContactImportResult>;
+  exportContacts: (contactListId: string, filters?: ContactFilters) => Promise<string>;
+  toggleContactOptIn: (contactId: string, optedIn: boolean) => Promise<Contact>;
+  getContactListStats: (contactListId: string) => Promise<any>;
+  searchContacts: (query: string, filters?: ContactFilters) => Contact[];
+  setLoading: (loading: boolean) => void;
+  setImporting: (importing: boolean) => void;
+  reset: () => void;
+}
+
+export const useContactStore = create<ContactState>((set, get) => ({
+  // Initial state
+  contacts: [],
+  contactLists: [],
+  loading: false,
+  importing: false,
+  pagination: {
     currentPage: 1,
     totalPages: 1,
     total: 0,
     limit: 50
-  });
+  },
 
-  // Fetch contact lists with proper error handling
-  const fetchContactLists = useCallback(async (): Promise<ContactList[]> => {
+  // Actions
+  fetchContactLists: async (): Promise<ContactList[]> => {
+    const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
       const response = await contactAPI.getLists();
       const lists = response.data.contactLists || [];
-      setContactLists(lists);
+      set({ contactLists: lists });
       return lists;
     } catch (error) {
       console.error('Error fetching contact lists:', error);
       toast.error('Failed to load contact lists');
       throw new Error('Failed to load contact lists');
     }
-  }, [isAuthenticated]);
+  },
 
-  // Refresh contact lists (optimized version)
-  const refreshContactLists = useCallback(async (): Promise<void> => {
+  refreshContactLists: async (): Promise<void> => {
+    const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) return;
     
     try {
       const response = await contactAPI.getLists();
       const lists = response.data.contactLists || [];
-      setContactLists(lists);
+      set({ contactLists: lists });
     } catch (error) {
       console.error('Error refreshing contact lists:', error);
     }
-  }, [isAuthenticated]);
+  },
 
-  // Fetch contacts with filtering and pagination
-  const fetchContacts = useCallback(async (
-    contactListId: string, 
-    filters: ContactFilters = {}
-  ): Promise<Contact[]> => {
+  fetchContacts: async (contactListId: string, filters: ContactFilters = {}): Promise<Contact[]> => {
+    const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) throw new Error('User not authenticated');
     if (!contactListId) throw new Error('Contact list ID is required');
 
     try {
-      setLoading(true);
+      set({ loading: true });
       
       const params: any = {
         page: filters.page || 1,
         limit: filters.limit || 50
       };
 
-      // Only include filters that are needed for initial load
       if (filters.optedIn !== undefined) {
         params.optedIn = filters.optedIn;
       }
@@ -120,21 +150,18 @@ export function useContactManagement() {
       if (filters.status) {
         params.status = filters.status;
       }
-      
-      // Remove search from API call since we handle it locally
-      // if (filters.search) {
-      //   params.search = filters.search;
-      // }
 
       const response = await contactAPI.getContacts(contactListId, params);
       const contactsData = response.data.contacts || [];
       
-      setContacts(contactsData);
-      setPagination({
-        currentPage: response.data.currentPage || 1,
-        totalPages: response.data.totalPages || 1,
-        total: response.data.total || 0,
-        limit: response.data.limit || 50
+      set({ 
+        contacts: contactsData,
+        pagination: {
+          currentPage: response.data.currentPage || 1,
+          totalPages: response.data.totalPages || 1,
+          total: response.data.total || 0,
+          limit: response.data.limit || 50
+        }
       });
       
       return contactsData;
@@ -143,12 +170,12 @@ export function useContactManagement() {
       toast.error('Failed to load contacts');
       throw new Error('Failed to load contacts');
     } finally {
-      setLoading(false);
+      set({ loading: false });
     }
-  }, [isAuthenticated]);
+  },
 
-  // Create new contact list
-  const createContactList = useCallback(async (name: string, description?: string): Promise<ContactList> => {
+  createContactList: async (name: string, description?: string): Promise<ContactList> => {
+    const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
@@ -158,7 +185,9 @@ export function useContactManagement() {
       });
       
       const newList = response.data.contactList;
-      setContactLists(prev => [newList, ...prev]);
+      set(state => ({ 
+        contactLists: [newList, ...state.contactLists] 
+      }));
       toast.success('Contact list created successfully');
       return newList;
     } catch (error) {
@@ -166,19 +195,21 @@ export function useContactManagement() {
       toast.error('Failed to create contact list');
       throw new Error('Failed to create contact list');
     }
-  }, [isAuthenticated]);
+  },
 
-  // Update contact list
-  const updateContactList = useCallback(async (id: string, updates: Partial<ContactList>): Promise<ContactList> => {
+  updateContactList: async (id: string, updates: Partial<ContactList>): Promise<ContactList> => {
+    const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
       const response = await contactAPI.updateList(id, updates);
       const updatedList = response.data.contactList;
       
-      setContactLists(prev => prev.map(list => 
-        list._id === id ? { ...list, ...updatedList } : list
-      ));
+      set(state => ({
+        contactLists: state.contactLists.map(list => 
+          list._id === id ? { ...list, ...updatedList } : list
+        )
+      }));
       toast.success('Contact list updated successfully');
       return updatedList;
     } catch (error) {
@@ -186,30 +217,26 @@ export function useContactManagement() {
       toast.error('Failed to update contact list');
       throw new Error('Failed to update contact list');
     }
-  }, [isAuthenticated]);
+  },
 
-  // Delete contact list
-  const deleteContactList = useCallback(async (id: string): Promise<void> => {
+  deleteContactList: async (id: string): Promise<void> => {
     try {
       await contactAPI.deleteList(id);
-      setContactLists(prev => prev.filter(list => list._id !== id));
-      alert('Contact list deleted successfully');
+      set(state => ({ 
+        contactLists: state.contactLists.filter(list => list._id !== id) 
+      }));
+      //alert('Contact list deleted successfully');
     } catch (error) {
       console.error('Error deleting contact list:', error);
       alert('Failed to delete contact list');
     }
-  }, []);
+  },
 
-
-  // Add single contact
-  const addContact = useCallback(async (
-    contactListId: string, 
-    contactData: any
-  ): Promise<Contact> => {
+  addContact: async (contactListId: string, contactData: any): Promise<Contact> => {
+    const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
-      // Validate phone number
       const cleanPhone = contactData?.phoneNumber?.replace(/\D/g, '');
       if (!cleanPhone || cleanPhone.length < 10 || cleanPhone.length > 15) {
         throw new Error('Phone number must be 10-15 digits');
@@ -224,11 +251,12 @@ export function useContactManagement() {
       
       const newContact = response.data.contact;
       
-      // Update local state immediately for better UX
-      setContacts(prev => [newContact, ...prev]);
+      set(state => ({ 
+        contacts: [newContact, ...state.contacts] 
+      }));
       
       // Refresh contact lists to update counts
-      await refreshContactLists();
+      await get().refreshContactLists();
       
       toast.success('Contact added successfully');
       return newContact;
@@ -241,27 +269,24 @@ export function useContactManagement() {
       toast.error('Failed to add contact');
       throw error;
     }
-  }, [isAuthenticated, refreshContactLists]);
+  },
 
-  // Update contact
-  const updateContact = useCallback(async (
-    contactId: string, 
-    updates: Partial<Contact>
-  ): Promise<Contact> => {
+  updateContact: async (contactId: string, updates: Partial<Contact>): Promise<Contact> => {
+    const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
       const response = await contactAPI.updateContact(contactId, updates);
       const updatedContact = response.data.contact;
       
-      // Update local state immediately
-      setContacts(prev => prev.map(contact => 
-        contact._id === contactId ? { ...contact, ...updatedContact } : contact
-      ));
+      set(state => ({
+        contacts: state.contacts.map(contact => 
+          contact._id === contactId ? { ...contact, ...updatedContact } : contact
+        )
+      }));
       
-      // Refresh contact lists to update counts if optedIn changed
       if (updates.optedIn !== undefined) {
-        await refreshContactLists();
+        await get().refreshContactLists();
       }
       
       toast.success('Contact updated successfully');
@@ -271,20 +296,20 @@ export function useContactManagement() {
       toast.error('Failed to update contact');
       throw new Error('Failed to update contact');
     }
-  }, [isAuthenticated, refreshContactLists]);
+  },
 
-  // Delete contact
-  const deleteContact = useCallback(async (contactId: string): Promise<void> => {
+  deleteContact: async (contactId: string): Promise<void> => {
+    const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
       await contactAPI.deleteContact(contactId);
       
-      // Update local state immediately
-      setContacts(prev => prev.filter(contact => contact._id !== contactId));
+      set(state => ({
+        contacts: state.contacts.filter(contact => contact._id !== contactId)
+      }));
       
-      // Refresh contact lists to update counts
-      await refreshContactLists();
+      await get().refreshContactLists();
       
       toast.success('Contact deleted successfully');
     } catch (error) {
@@ -292,17 +317,14 @@ export function useContactManagement() {
       toast.error('Failed to delete contact');
       throw new Error('Failed to delete contact');
     }
-  }, [isAuthenticated, refreshContactLists]);
+  },
 
-  // Bulk import contacts
-  const importContactsFromFile = useCallback(async (
-    contactListId: string, 
-    file: File
-  ): Promise<ContactImportResult> => {
+  importContactsFromFile: async (contactListId: string, file: File): Promise<ContactImportResult> => {
+    const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) throw new Error('User not authenticated');
 
     return new Promise((resolve, reject) => {
-      setImporting(true);
+      set({ importing: true });
       
       parse(file, {
         header: true,
@@ -345,7 +367,6 @@ export function useContactManagement() {
 
                 contactsToImport.push({
                   phoneNumber: phoneNumber,
-                  // countryCode: row.country_code || row.countryCode || '+1',
                   firstName: row.first_name || row.firstName || row.firstname || row['First Name'] || '',
                   lastName: row.last_name || row.lastName || row.lastname || row['Last Name'] || '',
                   email: row.email || row.Email || '',
@@ -388,34 +409,32 @@ export function useContactManagement() {
               }
             }
 
-            // Refresh contacts and lists if any were successfully imported
             if (importResult.success > 0) {
-              await fetchContacts(contactListId);
-              await refreshContactLists();
+              await get().fetchContacts(contactListId);
+              await get().refreshContactLists();
             }
 
             resolve(importResult);
           } catch (error) {
             reject(error);
           } finally {
-            setImporting(false);
+            set({ importing: false });
           }
         },
         error: (error) => {
-          setImporting(false);
+          set({ importing: false });
           toast.error('Failed to parse CSV file');
           reject(error);
         }
       });
     });
-  }, [isAuthenticated, fetchContacts, refreshContactLists]);
+  },
 
-  // Export contacts to CSV
-  const exportContacts = useCallback(async (contactListId: string, filters: ContactFilters = {}): Promise<string> => {
+  exportContacts: async (contactListId: string, filters: ContactFilters = {}): Promise<string> => {
+    const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
-      // Get all contacts by setting a high limit
       const response = await contactAPI.getContacts(contactListId, {
         ...filters,
         limit: 10000,
@@ -427,7 +446,6 @@ export function useContactManagement() {
       const headers = ['Phone Number', 'Country Code', 'First Name', 'Last Name', 'Email', 'Company', 'Opted In', 'Status', 'Source'];
       const csvRows = contacts.map(contact => [
         contact.phoneNumber,
-        // contact.countryCode,
         contact.firstName || '',
         contact.lastName || '',
         contact.email || '',
@@ -446,15 +464,14 @@ export function useContactManagement() {
       console.error('Error exporting contacts:', error);
       throw new Error('Failed to export contacts');
     }
-  }, [isAuthenticated]);
+  },
 
-  // Toggle contact opted-in status
-  const toggleContactOptIn = useCallback(async (contactId: string, optedIn: boolean): Promise<Contact> => {
-    return updateContact(contactId, { optedIn });
-  }, [updateContact]);
+  toggleContactOptIn: async (contactId: string, optedIn: boolean): Promise<Contact> => {
+    return get().updateContact(contactId, { optedIn });
+  },
 
-  // Get contact list statistics
-  const getContactListStats = useCallback(async (contactListId: string) => {
+  getContactListStats: async (contactListId: string) => {
+    const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
@@ -471,12 +488,12 @@ export function useContactManagement() {
       console.error('Error fetching contact list stats:', error);
       throw error;
     }
-  }, [isAuthenticated]);
+  },
 
-  // Search contacts across all lists
-  const searchContacts = useCallback((query: string, filters: ContactFilters = {}): Contact[] => {
+  searchContacts: (query: string, filters: ContactFilters = {}): Contact[] => {
+    const { contacts } = get();
+    
     if (!query.trim()) {
-      // If no search query, just apply filters
       let results = contacts;
       
       if (filters.optedIn !== undefined) {
@@ -493,7 +510,6 @@ export function useContactManagement() {
     const searchTerm = query.toLowerCase().trim();
     
     return contacts.filter(contact => {
-      // Search across multiple fields
       const matchesSearch = 
         contact.phoneNumber?.toLowerCase().includes(searchTerm) ||
         contact.firstName?.toLowerCase().includes(searchTerm) ||
@@ -501,45 +517,25 @@ export function useContactManagement() {
         contact.email?.toLowerCase().includes(searchTerm) ||
         `${contact.firstName || ''} ${contact.lastName || ''}`.toLowerCase().includes(searchTerm);
 
-      // Apply filters
       const matchesOptedIn = filters.optedIn === undefined || contact.optedIn === filters.optedIn;
       const matchesStatus = !filters.status || contact.status === filters.status;
 
       return matchesSearch && matchesOptedIn && matchesStatus;
     });
-  }, [contacts]);
-  // Initialize data
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchContactLists();
-    } else {
-      setContacts([]);
-      setContactLists([]);
-    }
-  }, [isAuthenticated, fetchContactLists]);
+  },
 
-  return {
-    // State
-    contacts,
-    contactLists,
-    loading,
-    importing,
-    pagination,
-    
-    // Methods
-    fetchContactLists,
-    refreshContactLists,
-    fetchContacts,
-    createContactList,
-    updateContactList,
-    deleteContactList,
-    addContact,
-    updateContact,
-    deleteContact,
-    importContactsFromFile,
-    exportContacts,
-    toggleContactOptIn,
-    getContactListStats,
-    searchContacts
-  };
-}
+  setLoading: (loading: boolean) => set({ loading }),
+  setImporting: (importing: boolean) => set({ importing }),
+  reset: () => set({
+    contacts: [],
+    contactLists: [],
+    loading: false,
+    importing: false,
+    pagination: {
+      currentPage: 1,
+      totalPages: 1,
+      total: 0,
+      limit: 50
+    }
+  })
+}));
