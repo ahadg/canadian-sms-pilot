@@ -260,7 +260,8 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     socket.on('new-notification', (data: any) => {
       console.log('Received new notification:', data);
       addNotification({
-        id: data.id || `notification-${Date.now()}`,
+        id: data.id,
+        _id: data._id || data.id,
         title: data.title,
         message: data.message,
         type: data.type || 'info',
@@ -274,6 +275,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       console.log('Received system notification:', data);
       addNotification({
         id: `system-${Date.now()}`,
+        _id: data._id || data.id ,
         type: data.type || 'info',
         title: data.title,
         message: data.message,

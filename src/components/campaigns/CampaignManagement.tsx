@@ -81,9 +81,7 @@ export function CampaignManagement() {
   
   const {
     contactLists,
-    createContactList,
     deleteContactList,
-    updateContactList,
     refreshContactLists
   } = useContactManagement();
 
@@ -925,10 +923,10 @@ export function CampaignManagement() {
                             <Edit className="h-3 w-3 mr-1" />
                             Manage
                           </Button>
-                          <Button variant="outline" size="sm" className="flex-1">
+                          {/* <Button variant="outline" size="sm" className="flex-1">
                             <FileText className="h-3 w-3 mr-1" />
                             Export
-                          </Button>
+                          </Button> */}
                           <Button 
                             variant="outline" 
                             size="sm" 

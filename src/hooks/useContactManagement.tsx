@@ -190,18 +190,27 @@ export function useContactManagement() {
 
   // Delete contact list
   const deleteContactList = useCallback(async (id: string): Promise<void> => {
-    if (!isAuthenticated) throw new Error('User not authenticated');
+    const { isAuthenticated } = useAuthStore.getState();
+
+    if (!isAuthenticated) {
+      alert('You must be logged in');
+      return;
+    }
+
+    // 🔹 Confirmation before delete
+    const confirmed = window.confirm('Are you sure you want to delete this contact list?');
+    if (!confirmed) return;
 
     try {
       await contactAPI.deleteList(id);
       setContactLists(prev => prev.filter(list => list._id !== id));
-      toast.success('Contact list deleted successfully');
+      alert('Contact list deleted successfully');
     } catch (error) {
       console.error('Error deleting contact list:', error);
-      toast.error('Failed to delete contact list');
-      throw new Error('Failed to delete contact list');
+      alert('Failed to delete contact list');
     }
-  }, [isAuthenticated]);
+  }, []);
+
 
   // Add single contact
   const addContact = useCallback(async (
