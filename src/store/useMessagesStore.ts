@@ -114,7 +114,6 @@ interface Conversation {
 }
 
 export const useMessagesStore = create<MessagesState>()(
-  persist(
     (set, get) => ({
       // Initial State
       messages: [],
@@ -506,16 +505,7 @@ export const useMessagesStore = create<MessagesState>()(
         setConversations(updatedConversations);
       },
 
-    }),
-    {
-      name: 'messages-storage',
-      partialize: (state) => ({
-        messages: state.messages,
-        filters: state.filters,
-        selectedDevice: state.selectedDevice,
-      }),
-    }
-  )
+    })
 );
 
 export const decodeBase64 = (str: string): string => {

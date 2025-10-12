@@ -270,7 +270,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
+      <DialogContent className="max-w-7xl h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
@@ -284,7 +284,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "view" | "add" | "import")} className="space-y-4">
           <TabsList>
             <TabsTrigger value="view">View Contacts</TabsTrigger>
             <TabsTrigger value="add">Add Contact</TabsTrigger>

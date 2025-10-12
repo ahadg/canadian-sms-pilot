@@ -21,6 +21,7 @@ import {
   Clock,
 } from "lucide-react";
 import { authFetch } from '@/lib/api';
+import { useNavigationStore } from '@/store/useNavigationStore';
 
 export function Dashboard() {
   const [stats, setStats] = useState(null);
@@ -29,7 +30,8 @@ export function Dashboard() {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
-
+  console.log("stats",stats)
+  const { activeSection, setActiveSection } = useNavigationStore();
   useEffect(() => {
     fetchDashboardData();
   }, []);
@@ -76,7 +78,9 @@ export function Dashboard() {
             <BarChart3 className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          <Button size="sm" className="bg-gradient-primary shadow-primary">
+          <Button 
+          onClick={() => setActiveSection('campaigns')}
+          size="sm" className="bg-gradient-primary shadow-primary">
             <Plus className="h-4 w-4 mr-2" />
             New Campaign
           </Button>
@@ -96,7 +100,7 @@ export function Dashboard() {
           />
           <StatsCard
             title="Active SIMs"
-            value={stats.activeSIMs}
+            value={stats?.activeSIMs || 0}
             description={`${stats.simHealth?.goodSignal} good signal`}
             icon={Signal}
             variant={stats.simHealth?.active > 0 ? "success" : "destructive"}
@@ -324,39 +328,6 @@ export function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* System Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5" />
-                System Status
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">API Status</span>
-                <Badge variant="outline" className="bg-green-50 text-green-700">
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                  Operational
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Database</span>
-                <Badge variant="outline" className="bg-green-50 text-green-700">
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                  Connected
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Last Sync</span>
-                <span className="text-xs text-muted-foreground">2 min ago</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Uptime</span>
-                <span className="text-xs text-muted-foreground">99.8%</span>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
     </div>

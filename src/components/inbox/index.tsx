@@ -604,28 +604,29 @@ export function Inbox() {
             </Card>
           ) : (
             <Card className="h-full flex items-center justify-center">
-              <CardContent className="p-8 text-center">
-                <MessageSquare className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-semibold mb-2">Select a Conversation</h3>
-                <p className="text-muted-foreground mb-4">
-                  Choose a conversation from the list to start messaging
-                </p>
-                {messages.length === 0 && selectedDevice && (
-                  <Button 
-                    variant="outline" 
-                    onClick={handleManualSync} 
-                    disabled={isSyncing}
-                    className="flex items-center gap-2"
-                  >
-                    {isSyncing ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <FolderSync className="h-4 w-4" />
-                    )}
-                    {isSyncing ? 'Syncing...' : 'Sync Messages from Device'}
-                  </Button>
-                )}
-              </CardContent>
+             <CardContent className="p-8 flex flex-col items-center justify-center text-center">
+  <MessageSquare className="h-16 w-16 mb-4 text-muted-foreground" />
+  <h3 className="text-lg font-semibold mb-2">Select a Conversation</h3>
+  <p className="text-muted-foreground mb-4">
+    Choose a conversation from the list to start messaging
+  </p>
+  {messages.length === 0 && selectedDevice && (
+    <Button 
+      variant="outline" 
+      onClick={handleManualSync} 
+      disabled={isSyncing}
+      className="flex items-center gap-2"
+    >
+      {isSyncing ? (
+        <RefreshCw className="h-4 w-4 animate-spin" />
+      ) : (
+        <FolderSync className="h-4 w-4" />
+      )}
+      {isSyncing ? 'Syncing...' : 'Sync Messages from Device'}
+    </Button>
+  )}
+</CardContent>
+
             </Card>
           )}
         </div>

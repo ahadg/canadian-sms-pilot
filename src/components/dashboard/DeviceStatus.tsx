@@ -45,7 +45,7 @@ export function DeviceStatus({ devices: propDevices }: DeviceStatusProps) {
   const [devices, setDevices] = useState<DeviceData[]>(propDevices || []);
   const [loading, setLoading] = useState(!propDevices);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-
+  console.log("devices",devices)
   // Fetch devices if not provided via props
   useEffect(() => {
     if (propDevices) {

@@ -212,7 +212,7 @@ export function DeviceManagement() {
 
       const result = await EjoinAPIService.addDevice(newDevice);
       console.log("handleAddDevice", result);
-      if (result.success && result.device) {
+      if (result.success == true && result.device) {
         // Add to state
         setDevices((prev: any) => [result.device, ...prev]);
 
