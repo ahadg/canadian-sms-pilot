@@ -39,12 +39,19 @@ import {
   Edit,
   Trash2,
   Loader2,
-
+  Pause,
+  CirclePlay,
+  StopCircle,
+  Calendar,
+  Clock,
+  Zap,
+  MessageCircle,
+  Smartphone,
+  Target
 } from "lucide-react";
 import { Device, useCampaigns } from "@/hooks/useCampaigns";
 import { toast } from "sonner";
 import { ContactManager } from "./ContactManager";
-//import { useContactManagement } from "@/hooks/useContactManagement";
 import { messageAPI, MessageVariant } from "@/lib/api/messages";
 import { contactAPI } from "@/lib/api/contacts";
 import { Campaign } from "@/lib/api/campaign";
@@ -53,11 +60,15 @@ import { getStatusBadge } from "./utils";
 import { CampaignActions } from "./CampaignActions";
 import { useContactStore } from "@/store/useContactStore";
 import { ContactManagement } from "./ContactManagement";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+
 // Canadian SMS rules template
 const CANADIAN_SMS_TEMPLATE = `Your message here. Reply STOP to unsubscribe.`;
-const defulat_taskSettings = {
+
+const defaultTaskSettings = {
   interval_min: 30000, // 30 seconds in milliseconds
-  interval_max: 50000, // 50 seconds in milliseconds
+  interval_max: 90000, // 90 seconds in milliseconds
   timeout: 30,
   charset: "UTF-8" as "UTF-8" | "Base64" | "PDU",
   coding: 0 as 0 | 1 | 2,
@@ -68,8 +79,12 @@ const defulat_taskSettings = {
   to_all: false,
   flash_sms: false,
   sms_count: 100,
-  sms_period: 60
-}
+  sms_period: 60,
+  dailyMessageLimit: 300,
+  messageVariantType: "static" as "static" | "ai_random",
+  useAiGeneration: false,
+  aiPrompt: ""
+};
 
 export function CampaignManagement() {
   const {
@@ -79,6 +94,11 @@ export function CampaignManagement() {
     createCampaign,
     messages,
     fetchDevices,
+    updateCampaignStatus,
+    pauseCampaign,
+    resumeCampaign,
+    stopCampaign,
+    startCampaignProcessing
   } = useCampaigns();
 
   const {
@@ -86,7 +106,6 @@ export function CampaignManagement() {
     deleteContactList,
     refreshContactLists
   } = useContactStore();
-  
 
   // Use Zustand socket store
   const { 
@@ -94,14 +113,6 @@ export function CampaignManagement() {
     campaignUpdates, 
     socket 
   } = useSocketStore();
-
-  const {
-    updateCampaignStatus,
-    pauseCampaignTasks,
-    resumeCampaignTasks,
-    removeCampaignTasks,
-    startCampaign
-  } = useCampaigns();
 
   // Handle real-time campaign updates from socket
   useEffect(() => {
@@ -144,19 +155,28 @@ export function CampaignManagement() {
   const [messageVariants, setMessageVariants] = useState<MessageVariant[]>([]);
   const [selectedVariantId, setSelectedVariantId] = useState<string>('');
   const [loadingVariants, setLoadingVariants] = useState(false);
+  const [messageVariantType, setMessageVariantType] = useState<'static' | 'ai_random'>('static');
 
   // Task settings state
-  const [taskSettings, setTaskSettings] = useState(defulat_taskSettings);
+  const [taskSettings, setTaskSettings] = useState(defaultTaskSettings);
+  const [dailyMessageLimit, setDailyMessageLimit] = useState(300);
+  const [sendingInterval, setSendingInterval] = useState({
+    min: 30000, // 30 seconds
+    max: 90000  // 90 seconds
+  });
+
   // Campaign form state with Canadian template as default
   const [campaignForm, setCampaignForm] = useState({
     name: '',
     message_content: CANADIAN_SMS_TEMPLATE,
     contactList: '',
     priority: 'normal' as 'low' | 'normal' | 'high',
-    status: 'scheduled',
+    status: 'scheduled' as 'scheduled' | 'active' | 'paused' | 'completed',
     device: '',
   });
+
   console.log("campaignForm", campaignForm);
+
   // Load devices on component mount
   useEffect(() => {
     const loadDevices = async () => {
@@ -169,6 +189,7 @@ export function CampaignManagement() {
         }
       } catch (error) {
         console.error('Error loading devices:', error);
+        toast.error('Failed to load devices');
       }
     };
 
@@ -245,25 +266,48 @@ export function CampaignManagement() {
       return;
     }
    
-    const { data: contacts_lists, error: contactsError } = await contactAPI.getListById(campaignForm.contactList);
-    console.log("contacts_lists", campaignForm.contactList, contacts_lists);
-    
     try {
-      await createCampaign({
+      const { data: contacts_lists, error: contactsError } = await contactAPI.getListById(campaignForm.contactList);
+      console.log("contacts_lists", campaignForm.contactList, contacts_lists);
+      
+      const campaignData = {
         name: campaignForm.name,
         messageContent: campaignForm.message_content,
         contactList: campaignForm.contactList || undefined,
         priority: campaignForm.priority,
         status: campaignForm.status,
         device: campaignForm.device,
-        taskSettings: taskSettings,
+        taskSettings: {
+          ...taskSettings,
+          messageVariantType,
+          dailyMessageLimit,
+          interval_min: sendingInterval.min,
+          interval_max: sendingInterval.max,
+          useAiGeneration: messageVariantType === 'ai_random',
+          aiPrompt: messageVariantType === 'ai_random' ? campaignForm.message_content : ''
+        },
         totalContacts: contacts_lists?.contactList?.totalContacts || 0,
         sentMessages: 0,
         deliveredMessages: 0,
         failedMessages: 0
-      });
+      };
+
+      console.log("Creating campaign with data:", campaignData);
       
+      const newCampaign = await createCampaign(campaignData);
       
+      // Start processing if status is active
+      if (campaignForm.status === 'active') {
+        try {
+          await startCampaignProcessing(newCampaign._id);
+          toast.success('Campaign created and started successfully');
+        } catch (error) {
+          console.error('Error starting campaign processing:', error);
+          toast.error('Campaign created but failed to start processing');
+        }
+      } else {
+        toast.success('Campaign created successfully');
+      }
       
       setIsCreateCampaignOpen(false);
       // Reset form
@@ -275,15 +319,62 @@ export function CampaignManagement() {
         status: 'scheduled',
         device: devices.length > 0 ? devices[0].id : ''
       });
-      // Update the reset in handleCreateCampaign
-      setTaskSettings(defulat_taskSettings);
+      setTaskSettings(defaultTaskSettings);
       setSelectedMessageId('');
       setSelectedVariantId('');
       setMessageVariants([]);
-      toast.success('Campaign created successfully');
+      setMessageVariantType('static');
+      setDailyMessageLimit(300);
+      setSendingInterval({ min: 30000, max: 90000 });
+      
     } catch (error) {
       console.error('Error creating campaign:', error);
       toast.error('Failed to create campaign');
+    }
+  };
+
+  // Handle campaign actions
+  const handleStartCampaign = async (campaignId: string) => {
+    try {
+      await startCampaignProcessing(campaignId);
+      await updateCampaignStatus(campaignId, 'active');
+      toast.success('Campaign started successfully');
+    } catch (error) {
+      console.error('Error starting campaign:', error);
+      toast.error('Failed to start campaign');
+    }
+  };
+
+  const handlePauseCampaign = async (campaignId: string) => {
+    try {
+      await pauseCampaign(campaignId);
+      await updateCampaignStatus(campaignId, 'paused');
+      toast.success('Campaign paused successfully');
+    } catch (error) {
+      console.error('Error pausing campaign:', error);
+      toast.error('Failed to pause campaign');
+    }
+  };
+
+  const handleResumeCampaign = async (campaignId: string) => {
+    try {
+      await resumeCampaign(campaignId);
+      await updateCampaignStatus(campaignId, 'active');
+      toast.success('Campaign resumed successfully');
+    } catch (error) {
+      console.error('Error resuming campaign:', error);
+      toast.error('Failed to resume campaign');
+    }
+  };
+
+  const handleStopCampaign = async (campaignId: string) => {
+    try {
+      await stopCampaign(campaignId);
+      await updateCampaignStatus(campaignId, 'completed');
+      toast.success('Campaign stopped successfully');
+    } catch (error) {
+      console.error('Error stopping campaign:', error);
+      toast.error('Failed to stop campaign');
     }
   };
 
@@ -306,17 +397,32 @@ export function CampaignManagement() {
       toast.error('Failed to create contact list');
     }
   };
+
   // Delivery rate calculator
   const getDeliveryRate = (campaign: Campaign) => {
-    if (campaign?.sentMessages === 0) return 0;
-    return (campaign?.deliveredMessages / campaign?.sentMessages) * 100;
+    if (!campaign?.sentMessages || campaign.sentMessages === 0) return 0;
+    return ((campaign.deliveredMessages || 0) / campaign.sentMessages) * 100;
   };
 
+  // Calculate campaign progress
+  const getCampaignProgress = (campaign: Campaign) => {
+    if (!campaign?.totalContacts || campaign.totalContacts === 0) return 0;
+    return (campaign.sentMessages / campaign.totalContacts) * 100;
+  };
+
+  // Format time
+  const formatTime = (milliseconds: number) => {
+    const seconds = Math.floor(milliseconds / 1000);
+    if (seconds < 60) return `${seconds} seconds`;
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes} minute${minutes > 1 ? 's' : ''}`;
+  };
 
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="ml-2">Loading campaigns...</span>
       </div>
     );
   }
@@ -339,14 +445,15 @@ export function CampaignManagement() {
                 New Campaign
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create New SMS Campaign</DialogTitle>
                 <DialogDescription>
-                  Set up a new SMS campaign with your target audience and message
+                  Set up a new SMS campaign with advanced scheduling, AI message variants, and daily limits
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4">
+              <div className="space-y-6">
+                {/* Basic Information */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="campaignName">Campaign Name *</Label>
@@ -369,7 +476,13 @@ export function CampaignManagement() {
                       <SelectContent>
                         {devices.map((device) => (
                           <SelectItem key={device._id} value={device._id}>
-                            {device.name} 
+                            <div className="flex items-center gap-2">
+                              <Smartphone className="h-4 w-4" />
+                              {device.name} 
+                              <Badge variant={device.status === 'online' ? 'default' : 'secondary'} className="ml-2">
+                                {device.status}
+                              </Badge>
+                            </div>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -377,6 +490,7 @@ export function CampaignManagement() {
                   </div>
                 </div>
                 
+                {/* Contact List and AI Messages */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="contactList">Contact List</Label>
@@ -390,7 +504,12 @@ export function CampaignManagement() {
                       <SelectContent>
                         {contactLists.map((list) => (
                           <SelectItem key={list._id} value={list._id}>
-                            {list.name} ({list?.optedInCount?.toLocaleString()} contacts)
+                            <div className="flex items-center justify-between">
+                              <span>{list.name}</span>
+                              <Badge variant="outline" className="ml-2">
+                                {list.optedInCount?.toLocaleString()} contacts
+                              </Badge>
+                            </div>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -454,7 +573,63 @@ export function CampaignManagement() {
                     )}
                   </div>
                 )}
+
+                {/* Message Variants Type */}
+                <div className="border-t pt-4">
+                  <h3 className="font-medium mb-3 flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4" />
+                    Message Variants
+                  </h3>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="variantType">Message Variation Type</Label>
+                      <Select 
+                        value={messageVariantType}
+                        onValueChange={(value: 'static' | 'ai_random') => setMessageVariantType(value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select variation type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="static">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4" />
+                              Use Selected Variants
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="ai_random">
+                            <div className="flex items-center gap-2">
+                              <Zap className="h-4 w-4" />
+                              AI Random Generation
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {messageVariantType === 'ai_random' && (
+                      <div>
+                        <Label htmlFor="aiPrompt">AI Prompt for Message Generation</Label>
+                        <Textarea 
+                          id="aiPrompt"
+                          placeholder="Describe the type of messages you want to generate. For example: 'Friendly promotional messages for a winter sale with urgency'..."
+                          value={campaignForm.message_content}
+                          onChange={(e) => setCampaignForm(prev => ({ 
+                            ...prev, 
+                            message_content: e.target.value 
+                          }))}
+                          className="min-h-[80px]"
+                        />
+                        <div className="text-xs text-muted-foreground mt-1">
+                          AI will generate unique message variants based on this prompt for each contact
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 
+                {/* Message Content */}
                 <div>
                   <Label htmlFor="message">Message Content *</Label>
                   <Textarea 
@@ -472,84 +647,130 @@ export function CampaignManagement() {
                   </div>
                 </div>
 
+                {/* Schedule Settings */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="scheduleType">Schedule</Label>
+                    <Label htmlFor="scheduleType">Schedule Type</Label>
                     <Select 
                       value={campaignForm.status}
                       onValueChange={(value) => setCampaignForm(prev => ({ ...prev, status: value as Campaign['status'] }))}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Send immediately" />
+                        <SelectValue placeholder="Select schedule type" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="active">Send Immediately</SelectItem>
-                        <SelectItem value="scheduled">Schedule for Later</SelectItem>
+                        <SelectItem value="scheduled">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4" />
+                            Schedule for Later
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="active">
+                          <div className="flex items-center gap-2">
+                            <Play className="h-4 w-4" />
+                            Start Immediately
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="priority">Priority</Label>
+                    <Select 
+                      value={campaignForm.priority}
+                      onValueChange={(value) => setCampaignForm(prev => ({ ...prev, priority: value as 'low' | 'normal' | 'high' }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select priority" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="normal">Normal</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
 
-                {/* Task Settings Section */}
+                {/* Daily Limits Section */}
                 <div className="border-t pt-4">
-                  <h3 className="font-medium mb-3">Task Settings</h3>
+                  <h3 className="font-medium mb-3 flex items-center gap-2">
+                    <Target className="h-4 w-4" />
+                    Daily Limits
+                  </h3>
                   
-                  {/* Interval Settings */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="interval_min">Minimum Interval (ms) *</Label>
+                      <Label htmlFor="dailyLimit">Daily Message Limit</Label>
                       <Input 
-                        id="interval_min"
+                        id="dailyLimit"
                         type="number" 
-                        value={taskSettings.interval_min}
-                        onChange={(e) => setTaskSettings(prev => ({ 
-                          ...prev, 
-                          interval_min: parseInt(e.target.value) || 30000 
-                        }))}
-                        min="1000"
-                        max="300000"
-                        step="1000"
+                        value={dailyMessageLimit}
+                        onChange={(e) => setDailyMessageLimit(parseInt(e.target.value) || 300)}
+                        min="1"
+                        max="10000"
                       />
                       <div className="text-xs text-muted-foreground mt-1">
-                        {taskSettings.interval_min / 1000} seconds
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="interval_max">Maximum Interval (ms) *</Label>
-                      <Input 
-                        id="interval_max"
-                        type="number" 
-                        value={taskSettings.interval_max}
-                        onChange={(e) => setTaskSettings(prev => ({ 
-                          ...prev, 
-                          interval_max: parseInt(e.target.value) || 50000 
-                        }))}
-                        min="1000"
-                        max="300000"
-                        step="1000"
-                      />
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {taskSettings.interval_max / 1000} seconds
+                        Campaign will pause after sending {dailyMessageLimit} messages and resume next day automatically
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  {/* Timeout and Character Set */}
-                  <div className="grid grid-cols-2 gap-4 mt-3">
+                {/* Sending Interval Section */}
+                <div className="border-t pt-4">
+                  <h3 className="font-medium mb-3 flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Sending Intervals
+                  </h3>
+                  
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="timeout">Timeout (seconds) *</Label>
+                      <Label htmlFor="intervalMin">Minimum Interval (seconds)</Label>
                       <Input 
-                        id="timeout"
+                        id="intervalMin"
                         type="number" 
-                        value={taskSettings.timeout}
-                        onChange={(e) => setTaskSettings(prev => ({ 
+                        value={sendingInterval.min / 1000}
+                        onChange={(e) => setSendingInterval(prev => ({ 
                           ...prev, 
-                          timeout: parseInt(e.target.value) || 30 
+                          min: (parseInt(e.target.value) || 30) * 1000 
                         }))}
                         min="10"
                         max="300"
                       />
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Minimum: {sendingInterval.min / 1000} seconds
+                      </div>
                     </div>
+                    <div>
+                      <Label htmlFor="intervalMax">Maximum Interval (seconds)</Label>
+                      <Input 
+                        id="intervalMax"
+                        type="number" 
+                        value={sendingInterval.max / 1000}
+                        onChange={(e) => setSendingInterval(prev => ({ 
+                          ...prev, 
+                          max: (parseInt(e.target.value) || 90) * 1000 
+                        }))}
+                        min="30"
+                        max="300"
+                      />
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Maximum: {sendingInterval.max / 1000} seconds
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-2">
+                    Messages will be sent with random intervals between {sendingInterval.min / 1000}s and {sendingInterval.max / 1000}s
+                  </div>
+                </div>
+
+                {/* Advanced Task Settings */}
+                <div className="border-t pt-4">
+                  <h3 className="font-medium mb-3">Advanced Settings</h3>
+                  
+                  {/* Character Set and Coding */}
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="charset">Character Set</Label>
                       <Select 
@@ -569,10 +790,6 @@ export function CampaignManagement() {
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-
-                  {/* Coding and SMS Type */}
-                  <div className="grid grid-cols-2 gap-4 mt-3">
                     <div>
                       <Label htmlFor="coding">Message Coding</Label>
                       <Select 
@@ -586,28 +803,9 @@ export function CampaignManagement() {
                           <SelectValue placeholder="Select coding" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="0">Not Assign (Auto-detect)</SelectItem>
+                          <SelectItem value="0">Auto-detect</SelectItem>
                           <SelectItem value="1">USC2 (Unicode)</SelectItem>
                           <SelectItem value="2">GSM 7-bit</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="sms_type">SMS Type</Label>
-                      <Select 
-                        value={taskSettings.sms_type.toString()}
-                        onValueChange={(value) => setTaskSettings(prev => ({ 
-                          ...prev, 
-                          sms_type: parseInt(value) as 0 | 1 | 2 
-                        }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select SMS type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="0">SMS</SelectItem>
-                          <SelectItem value="1">MMS</SelectItem>
-                          <SelectItem value="2">MMS with multiple numbers and subjects</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -616,118 +814,55 @@ export function CampaignManagement() {
                   {/* Report Settings */}
                   <div className="grid grid-cols-3 gap-4 mt-3">
                     <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
+                      <Switch
                         id="sdr"
                         checked={taskSettings.sdr}
-                        onChange={(e) => setTaskSettings(prev => ({ 
+                        onCheckedChange={(checked) => setTaskSettings(prev => ({ 
                           ...prev, 
-                          sdr: e.target.checked 
+                          sdr: checked 
                         }))}
-                        className="rounded border-gray-300"
                       />
                       <Label htmlFor="sdr" className="text-sm">SDR Report</Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
+                      <Switch
                         id="fdr"
                         checked={taskSettings.fdr}
-                        onChange={(e) => setTaskSettings(prev => ({ 
+                        onCheckedChange={(checked) => setTaskSettings(prev => ({ 
                           ...prev, 
-                          fdr: e.target.checked 
+                          fdr: checked 
                         }))}
-                        className="rounded border-gray-300"
                       />
                       <Label htmlFor="fdr" className="text-sm">FDR Report</Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
+                      <Switch
                         id="dr"
                         checked={taskSettings.dr}
-                        onChange={(e) => setTaskSettings(prev => ({ 
+                        onCheckedChange={(checked) => setTaskSettings(prev => ({ 
                           ...prev, 
-                          dr: e.target.checked 
+                          dr: checked 
                         }))}
-                        className="rounded border-gray-300"
                       />
                       <Label htmlFor="dr" className="text-sm">DR Report</Label>
                     </div>
                   </div>
-
-                  {/* Additional Settings */}
-                  <div className="grid grid-cols-2 gap-4 mt-3">
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="to_all"
-                        checked={taskSettings.to_all}
-                        onChange={(e) => setTaskSettings(prev => ({ 
-                          ...prev, 
-                          to_all: e.target.checked 
-                        }))}
-                        className="rounded border-gray-300"
-                      />
-                      <Label htmlFor="to_all" className="text-sm">Use All Ports</Label>
-                    </div>
-                    {/* <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="flash_sms"
-                        checked={taskSettings.flash_sms}
-                        onChange={(e) => setTaskSettings(prev => ({ 
-                          ...prev, 
-                          flash_sms: e.target.checked 
-                        }))}
-                        className="rounded border-gray-300"
-                      />
-                      <Label htmlFor="flash_sms" className="text-sm">Flash SMS</Label>
-                    </div> */}
-                  </div>
-
-                  {/* Status Report Settings */}
-                  <div className="grid grid-cols-2 gap-4 mt-3">
-                    <div>
-                      <Label htmlFor="sms_count">SMS Count for Status Report</Label>
-                      <Input 
-                        id="sms_count"
-                        type="number" 
-                        value={taskSettings.sms_count}
-                        onChange={(e) => setTaskSettings(prev => ({ 
-                          ...prev, 
-                          sms_count: parseInt(e.target.value) || 100 
-                        }))}
-                        min="0"
-                        max="1000"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="sms_period">Status Report Period (seconds)</Label>
-                      <Input 
-                        id="sms_period"
-                        type="number" 
-                        value={taskSettings.sms_period}
-                        onChange={(e) => setTaskSettings(prev => ({ 
-                          ...prev, 
-                          sms_period: parseInt(e.target.value) || 60 
-                        }))}
-                        min="0"
-                        max="3600"
-                      />
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Set to 0 to disable status reports
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
-                <div className="flex gap-2">
-                  {/* <Button variant="outline" className="flex-1">
-                    <Eye className="h-4 w-4 mr-2" />
-                    Preview
-                  </Button> */}
-                  <Button className="flex-1" onClick={handleCreateCampaign}>
+                {/* Action Buttons */}
+                <div className="flex gap-2 pt-4">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1"
+                    onClick={() => setIsCreateCampaignOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    className="flex-1 bg-blue-600 hover:bg-blue-700" 
+                    onClick={handleCreateCampaign}
+                    disabled={!campaignForm.name || !campaignForm.message_content || !campaignForm.device}
+                  >
                     <Send className="h-4 w-4 mr-2" />
                     Create Campaign
                   </Button>
@@ -765,7 +900,7 @@ export function CampaignManagement() {
                   <div>
                     <p className="text-sm text-muted-foreground">Active Now</p>
                     <p className="text-2xl font-bold">
-                      {campaigns.filter((c: any) => c?.status === "active").length}
+                      {campaigns.filter((c: Campaign) => c?.status === "active").length}
                     </p>
                   </div>
                   <Play className="h-8 w-8 text-green-500" />
@@ -779,7 +914,7 @@ export function CampaignManagement() {
                   <div>
                     <p className="text-sm text-muted-foreground">Messages Sent</p>
                     <p className="text-2xl font-bold">
-                      {campaigns.reduce((sum, c) => sum + c?.sentMessages, 0).toLocaleString()}
+                      {campaigns.reduce((sum: number, c: Campaign) => sum + (c?.sentMessages || 0), 0).toLocaleString()}
                     </p>
                   </div>
                   <BarChart3 className="h-8 w-8 text-purple-500" />
@@ -794,7 +929,7 @@ export function CampaignManagement() {
                     <p className="text-sm text-muted-foreground">Avg. Delivery Rate</p>
                     <p className="text-2xl font-bold">
                       {campaigns.length > 0 
-                        ? (campaigns.reduce((sum, c) => sum + getDeliveryRate(c), 0) / campaigns.length).toFixed(1)
+                        ? (campaigns.reduce((sum: number, c: Campaign) => sum + getDeliveryRate(c), 0) / campaigns.length).toFixed(1)
                         : 0}%
                     </p>
                   </div>
@@ -810,75 +945,159 @@ export function CampaignManagement() {
               <CardTitle>Campaign Overview</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Campaign</TableHead>
-                      <TableHead>Device</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Progress</TableHead>
-                      <TableHead>Delivery Rate</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {campaigns.map((campaign) => {
-                      const assignedDevice = devices.find(d => d.id === campaign.device);
-                      return (
-                        <TableRow key={campaign.id}>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{campaign.name}</div>
-                              <div className="text-xs text-muted-foreground truncate max-w-xs">
-                                {campaign.messagePreview || campaign.messageContent.substring(0, 50) + '...'}
+              {campaigns.length === 0 ? (
+                <div className="text-center py-8">
+                  <Send className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No campaigns yet</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Create your first SMS campaign to get started
+                  </p>
+                  <Button onClick={() => setIsCreateCampaignOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Campaign
+                  </Button>
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Campaign</TableHead>
+                        <TableHead>Device</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Progress</TableHead>
+                        <TableHead>Delivery Rate</TableHead>
+                        <TableHead>Daily Limit</TableHead>
+                        <TableHead>Created</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {campaigns.map((campaign: Campaign) => {
+                        const assignedDevice = devices.find(d => d.id === campaign.device);
+                        const progress = getCampaignProgress(campaign);
+                        const deliveryRate = getDeliveryRate(campaign);
+                        
+                        return (
+                          <TableRow key={campaign._id}>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">{campaign.name}</div>
+                                <div className="text-xs text-muted-foreground truncate max-w-xs">
+                                  {campaign.messagePreview || campaign.messageContent?.substring(0, 50) + '...'}
+                                </div>
+                                {campaign.taskSettings?.messageVariantType === 'ai_random' && (
+                                  <Badge variant="outline" className="mt-1">
+                                    <Zap className="h-3 w-3 mr-1" />
+                                    AI Variants
+                                  </Badge>
+                                )}
                               </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-sm text-muted-foreground">
-                              {campaign?.device ? campaign?.device.name : 'No device'}
-                            </div>
-                          </TableCell>
-                          <TableCell>{getStatusBadge(campaign.status)}</TableCell>
-                          <TableCell>
-                            <div className="space-y-1">
-                              <div className="text-sm">
-                                {campaign?.sentMessages.toLocaleString()}/{campaign.totalContacts.toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm text-muted-foreground">
+                                {assignedDevice ? assignedDevice.name : 'No device'}
                               </div>
-                              <Progress 
-                                value={campaign.totalContacts > 0 ? (campaign?.sentMessages / campaign.totalContacts) * 100 : 0} 
-                                className="h-2 w-24"
-                              />
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              {getDeliveryRate(campaign).toFixed(1)}%
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {new Date(campaign.createdAt).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
-                          <CampaignActions
-                              campaign={campaign}
-                              isConnected={isConnected}
-                              devices={devices}
-                              updateCampaignStatus={updateCampaignStatus}
-                              pauseCampaignTasks={pauseCampaignTasks}
-                              resumeCampaignTasks={resumeCampaignTasks}
-                              removeCampaignTasks={removeCampaignTasks}
-                              startCampaign={startCampaign}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                            </TableCell>
+                            <TableCell>{getStatusBadge(campaign.status)}</TableCell>
+                            <TableCell>
+                              <div className="space-y-1">
+                                <div className="text-sm">
+                                  {campaign.sentMessages?.toLocaleString()}/{campaign.totalContacts?.toLocaleString()}
+                                </div>
+                                <Progress 
+                                  value={progress} 
+                                  className="h-2 w-24"
+                                />
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm font-medium">
+                                {deliveryRate.toFixed(1)}%
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm text-muted-foreground">
+                                {campaign.taskSettings?.dailyMessageLimit || 300}/day
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {new Date(campaign.createdAt).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                {campaign.status === 'scheduled' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleStartCampaign(campaign._id)}
+                                    disabled={!isConnected}
+                                  >
+                                    <Play className="h-3 w-3 mr-1" />
+                                    Start
+                                  </Button>
+                                )}
+                                {campaign.status === 'active' && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handlePauseCampaign(campaign._id)}
+                                      disabled={!isConnected}
+                                    >
+                                      <Pause className="h-3 w-3 mr-1" />
+                                      Pause
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleStopCampaign(campaign._id)}
+                                    >
+                                      <StopCircle className="h-3 w-3 mr-1" />
+                                      Stop
+                                    </Button>
+                                  </>
+                                )}
+                                {campaign.status === 'paused' && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleResumeCampaign(campaign._id)}
+                                      disabled={!isConnected}
+                                    >
+                                      <CirclePlay className="h-3 w-3 mr-1" />
+                                      Resume
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleStopCampaign(campaign._id)}
+                                    >
+                                      <StopCircle className="h-3 w-3 mr-1" />
+                                      Stop
+                                    </Button>
+                                  </>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    // Edit campaign logic here
+                                    toast.info('Edit feature coming soon');
+                                  }}
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -889,8 +1108,36 @@ export function CampaignManagement() {
         </TabsContent>
       </Tabs>
 
-      {/* Contact Manager Dialog */}
-
+      {/* Create Contact List Dialog */}
+      <Dialog open={isCreateContactListOpen} onOpenChange={setIsCreateContactListOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Contact List</DialogTitle>
+            <DialogDescription>
+              Create a new contact list to organize your contacts
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="contactListName">Contact List Name</Label>
+              <Input 
+                id="contactListName"
+                placeholder="My Contact List"
+                value={contactListName}
+                onChange={(e) => setContactListName(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setIsCreateContactListOpen(false)}>
+                Cancel
+              </Button>
+              <Button className="flex-1" onClick={handleCreateContactList}>
+                Create List
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

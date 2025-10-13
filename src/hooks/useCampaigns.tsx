@@ -128,6 +128,64 @@ export function useCampaigns() {
     }
   };
 
+  // Update your useCampaigns hook to use the new endpoints
+const startCampaignProcessing = async (campaignId: string, 
+//  deviceId: string
+) => {
+  if (!isAuthenticated) throw new Error('User not authenticated');
+
+  try {
+    // Start background processing instead of immediate sending
+    const response = await campaignAPI.startProcessing(campaignId);
+    
+    // Update campaign status
+    await updateCampaignStatus(campaignId, 'active');
+    
+    return { 
+      success: true, 
+      message: 'Campaign processing started in background',
+      data: response.data
+    };
+  } catch (error) {
+    console.error('Error starting campaign processing:', error);
+    throw error;
+  }
+};
+
+// Add new methods for campaign control
+const pauseCampaign = async (campaignId: string) => {
+  try {
+    await campaignAPI.pauseCampaign(campaignId);
+    await updateCampaignStatus(campaignId, 'paused');
+    return { success: true };
+  } catch (error) {
+    console.error('Error pausing campaign:', error);
+    throw error;
+  }
+};
+
+const resumeCampaign = async (campaignId: string) => {
+  try {
+    await campaignAPI.resumeCampaign(campaignId);
+    await updateCampaignStatus(campaignId, 'active');
+    return { success: true };
+  } catch (error) {
+    console.error('Error resuming campaign:', error);
+    throw error;
+  }
+};
+
+const stopCampaign = async (campaignId: string) => {
+  try {
+    await campaignAPI.stopCampaign(campaignId);
+    await updateCampaignStatus(campaignId, 'completed');
+    return { success: true };
+  } catch (error) {
+    console.error('Error stopping campaign:', error);
+    throw error;
+  }
+};
+
   // Send SMS campaign
   const sendCampaignSms = async (
     campaignId: string,
@@ -555,5 +613,10 @@ const getCampaignReceivedSms = async (device:any,taskId: number, num: number = 5
     removeCampaignTasks,
     getCampaignTasks,
     getCampaignReceivedSms,
+
+    startCampaignProcessing,
+    pauseCampaign,
+    resumeCampaign,
+    stopCampaign
   };
 }

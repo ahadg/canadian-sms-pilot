@@ -147,15 +147,30 @@ export interface Campaign {
     },
   
     // Pause campaign
-    pause: async (id: string) => {
+    pauseCampaign: async (id: string) => {
       return authFetch<{ data: {campaign: Campaign } }>(`/api/campaigns/${id}/pause`, {
+        method: 'POST'
+      });
+    },
+
+
+    // Pause campaign
+    startProcessing: async (id: string) => {
+      return authFetch<{ data: {campaign: Campaign } }>(`/api/campaigns/${id}/start-processing`, {
         method: 'POST'
       });
     },
   
     // Resume campaign
-    resume: async (id: string) => {
+    resumeCampaign: async (id: string) => {
       return authFetch<{ data: {campaign: Campaign } }>(`/api/campaigns/${id}/resume`, {
+        method: 'POST'
+      });
+    },
+
+    // Resume campaign
+    stopCampaign: async (id: string) => {
+      return authFetch<{ data: {campaign: Campaign } }>(`/api/campaigns/${id}/stop`, {
         method: 'POST'
       });
     },
