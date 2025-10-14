@@ -47,12 +47,18 @@ import {
   Zap,
   MessageCircle,
   Smartphone,
-  Target
+  Target,
+  Wand2,
+  Shuffle,
+  CheckCircle,
+  AlertCircle,
+  Eye,
+  Copy
 } from "lucide-react";
 import { Device, useCampaigns } from "@/hooks/useCampaigns";
 import { toast } from "sonner";
 import { ContactManager } from "./ContactManager";
-import { messageAPI, MessageVariant } from "@/lib/api/messages";
+import { messageAPI, MessageVariant, SavedMessage } from "@/lib/api/messages";
 import { contactAPI } from "@/lib/api/contacts";
 import { Campaign } from "@/lib/api/campaign";
 import { useSocketStore } from "@/store/useSocketStore";
@@ -62,6 +68,8 @@ import { useContactStore } from "@/store/useContactStore";
 import { ContactManagement } from "./ContactManagement";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Canadian SMS rules template
 const CANADIAN_SMS_TEMPLATE = `Your message here. Reply STOP to unsubscribe.`;
@@ -85,6 +93,9 @@ const defaultTaskSettings = {
   useAiGeneration: false,
   aiPrompt: ""
 };
+
+// Message variation types
+type MessageVariationType = "single_variant" | "multiple_variants" | "ai_random";
 
 export function CampaignManagement() {
   const {
@@ -152,10 +163,14 @@ export function CampaignManagement() {
 
   // Message variant state
   const [selectedMessageId, setSelectedMessageId] = useState<string>('');
+  const [selectedAIMessage, setSelectedAIMessage] = useState<SavedMessage | null>(null);
   const [messageVariants, setMessageVariants] = useState<MessageVariant[]>([]);
   const [selectedVariantId, setSelectedVariantId] = useState<string>('');
   const [loadingVariants, setLoadingVariants] = useState(false);
-  const [messageVariantType, setMessageVariantType] = useState<'static' | 'ai_random'>('static');
+  
+  // New message variation type state
+  const [messageVariationType, setMessageVariationType] = useState<MessageVariationType>("single_variant");
+  const [customMessageContent, setCustomMessageContent] = useState(CANADIAN_SMS_TEMPLATE);
 
   // Task settings state
   const [taskSettings, setTaskSettings] = useState(defaultTaskSettings);
@@ -201,20 +216,27 @@ export function CampaignManagement() {
     if (!messageId) {
       setMessageVariants([]);
       setSelectedVariantId('');
+      setSelectedAIMessage(null);
       return;
     }
 
     setLoadingVariants(true);
     try {
+      // Find the selected message from the messages list
+      const selectedMessage = messages.find((msg: SavedMessage) => msg._id === messageId);
+      setSelectedAIMessage(selectedMessage || null);
+
       const response = await messageAPI.getVariants(messageId);
       console.log("MessageVariants_response", response);
       const variants = response.data.variants || [];
 
       setMessageVariants(variants);
       
-      // Auto-select first variant if available
+      // Auto-select first variant if available and set to multiple variants mode
       if (variants.length > 0) {
         setSelectedVariantId(variants[0]._id);
+        setMessageVariationType("multiple_variants");
+        setCustomMessageContent(variants[0].content);
         setCampaignForm(prev => ({
           ...prev,
           message_content: variants[0].content
@@ -224,6 +246,7 @@ export function CampaignManagement() {
       console.error('Error fetching message variants:', error);
       toast.error('Failed to load message variants');
       setMessageVariants([]);
+      setSelectedAIMessage(null);
     } finally {
       setLoadingVariants(false);
     }
@@ -233,8 +256,11 @@ export function CampaignManagement() {
   const handleMessageSelect = (messageId: string) => {
     if (messageId === 'none') {
       setSelectedMessageId('');
+      setSelectedAIMessage(null);
       setMessageVariants([]);
       setSelectedVariantId('');
+      setMessageVariationType("single_variant");
+      setCustomMessageContent(CANADIAN_SMS_TEMPLATE);
       setCampaignForm(prev => ({ 
         ...prev, 
         message_content: CANADIAN_SMS_TEMPLATE 
@@ -252,10 +278,77 @@ export function CampaignManagement() {
     
     const selectedVariant = messageVariants.find(v => v._id === variantId);
     if (selectedVariant) {
+      setCustomMessageContent(selectedVariant.content);
       setCampaignForm(prev => ({
         ...prev,
         message_content: selectedVariant.content
       }));
+    }
+  };
+
+  // Handle message variation type change
+  const handleVariationTypeChange = (type: MessageVariationType) => {
+    setMessageVariationType(type);
+    
+    // Update campaign form based on selection
+    if (type === "single_variant") {
+      setCampaignForm(prev => ({
+        ...prev,
+        message_content: customMessageContent
+      }));
+    } else if (type === "multiple_variants" && selectedVariantId) {
+      const selectedVariant = messageVariants.find(v => v._id === selectedVariantId);
+      if (selectedVariant) {
+        setCampaignForm(prev => ({
+          ...prev,
+          message_content: selectedVariant.content
+        }));
+      }
+    } else if (type === "ai_random" && selectedAIMessage) {
+      // Use the original prompt and base message from the selected AI message
+      setCampaignForm(prev => ({
+        ...prev,
+        message_content: selectedAIMessage.originalPrompt || selectedAIMessage.baseMessage || ""
+      }));
+    }
+  };
+
+  // Handle custom message content change
+  const handleCustomMessageChange = (content: string) => {
+    setCustomMessageContent(content);
+    if (messageVariationType === "single_variant") {
+      setCampaignForm(prev => ({
+        ...prev,
+        message_content: content
+      }));
+    }
+  };
+
+  // Copy base message to custom message
+  const handleUseBaseMessage = () => {
+    if (selectedAIMessage?.baseMessage) {
+      setCustomMessageContent(selectedAIMessage.baseMessage);
+      if (messageVariationType === "single_variant") {
+        setCampaignForm(prev => ({
+          ...prev,
+          message_content: selectedAIMessage.baseMessage
+        }));
+      }
+      toast.success("Base message copied to custom message");
+    }
+  };
+
+  // Copy original prompt to custom message
+  const handleUseOriginalPrompt = () => {
+    if (selectedAIMessage?.originalPrompt) {
+      setCustomMessageContent(selectedAIMessage.originalPrompt);
+      if (messageVariationType === "single_variant") {
+        setCampaignForm(prev => ({
+          ...prev,
+          message_content: selectedAIMessage.originalPrompt
+        }));
+      }
+      toast.success("Original prompt copied to custom message");
     }
   };
 
@@ -270,6 +363,21 @@ export function CampaignManagement() {
       const { data: contacts_lists, error: contactsError } = await contactAPI.getListById(campaignForm.contactList);
       console.log("contacts_lists", campaignForm.contactList, contacts_lists);
       
+      // Prepare task settings based on message variation type
+      const finalTaskSettings = {
+        ...taskSettings,
+        //messageVariantType: messageVariationType === "ai_random" ? "ai_random" : "static",
+        dailyMessageLimit,
+        interval_min: sendingInterval.min,
+        interval_max: sendingInterval.max,
+        useAiGeneration: messageVariationType === "ai_random",
+        aiPrompt: messageVariationType === "ai_random" && selectedAIMessage ? selectedAIMessage.originalPrompt : "",
+        baseMessage: messageVariationType === "ai_random" && selectedAIMessage ? selectedAIMessage.baseMessage : "",
+        selectedVariantId: messageVariationType === "multiple_variants" ? selectedVariantId : null,
+        messageVariationType,
+        message: selectedAIMessage?._id || null
+      };
+
       const campaignData = {
         name: campaignForm.name,
         messageContent: campaignForm.message_content,
@@ -277,19 +385,13 @@ export function CampaignManagement() {
         priority: campaignForm.priority,
         status: campaignForm.status,
         device: campaignForm.device,
-        taskSettings: {
-          ...taskSettings,
-          messageVariantType,
-          dailyMessageLimit,
-          interval_min: sendingInterval.min,
-          interval_max: sendingInterval.max,
-          useAiGeneration: messageVariantType === 'ai_random',
-          aiPrompt: messageVariantType === 'ai_random' ? campaignForm.message_content : ''
-        },
+        taskSettings: finalTaskSettings,
         totalContacts: contacts_lists?.contactList?.totalContacts || 0,
         sentMessages: 0,
         deliveredMessages: 0,
-        failedMessages: 0
+        failedMessages: 0,
+        // Include message reference for AI campaigns
+        message: messageVariationType === "ai_random" ? selectedAIMessage?._id : undefined
       };
 
       console.log("Creating campaign with data:", campaignData);
@@ -321,9 +423,11 @@ export function CampaignManagement() {
       });
       setTaskSettings(defaultTaskSettings);
       setSelectedMessageId('');
+      setSelectedAIMessage(null);
       setSelectedVariantId('');
       setMessageVariants([]);
-      setMessageVariantType('static');
+      setMessageVariationType('single_variant');
+      setCustomMessageContent(CANADIAN_SMS_TEMPLATE);
       setDailyMessageLimit(300);
       setSendingInterval({ min: 30000, max: 90000 });
       
@@ -333,7 +437,7 @@ export function CampaignManagement() {
     }
   };
 
-  // Handle campaign actions
+  // Handle campaign actions (keep existing functions)
   const handleStartCampaign = async (campaignId: string) => {
     try {
       await startCampaignProcessing(campaignId);
@@ -418,6 +522,14 @@ export function CampaignManagement() {
     return `${minutes} minute${minutes > 1 ? 's' : ''}`;
   };
 
+  // Get character count and SMS segments
+  const getMessageStats = (message: string) => {
+    const charCount = message.length;
+    const segments = Math.ceil(charCount / 160);
+    const encoding = charCount > 160 ? 'USC2' : 'GSM-7';
+    return { charCount, segments, encoding };
+  };
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -449,7 +561,7 @@ export function CampaignManagement() {
               <DialogHeader>
                 <DialogTitle>Create New SMS Campaign</DialogTitle>
                 <DialogDescription>
-                  Set up a new SMS campaign with advanced scheduling, AI message variants, and daily limits
+                  Set up a new SMS campaign with advanced message variations and scheduling options
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-6">
@@ -526,9 +638,14 @@ export function CampaignManagement() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Use custom message</SelectItem>
-                        {(messages || []).map((message: any) => (
+                        {(messages || []).map((message: SavedMessage) => (
                           <SelectItem key={message._id} value={message._id}>
-                            {message.name} ({message.category})
+                            <div className="flex flex-col items-start">
+                              <span className="font-medium">{message.name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {message.category} • {message.baseMessage ? `${message.baseMessage.substring(0, 30)}...` : 'No base message'}
+                              </span>
+                            </div>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -536,118 +653,268 @@ export function CampaignManagement() {
                   </div>
                 </div>
 
-                {/* Message Variants Selection */}
-                {selectedMessageId && (
-                  <div>
-                    <Label htmlFor="messageVariant">Message Variants</Label>
-                    <Select 
-                      value={selectedVariantId}
-                      onValueChange={handleVariantSelect}
-                      disabled={loadingVariants}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={
-                          loadingVariants ? "Loading variants..." : "Select a variant..."
-                        } />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {messageVariants.map((variant) => (
-                          <SelectItem key={variant._id} value={variant._id}>
-                            <div className="flex flex-col items-start">
-                              <span className="font-medium">
-                                {variant.tone} ({variant.characterCount} chars)
-                              </span>
-                              <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                {variant.content.substring(0, 50)}...
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {loadingVariants && (
-                      <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading message variants...
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Message Variants Type */}
+                {/* Message Variation Type Selection */}
                 <div className="border-t pt-4">
                   <h3 className="font-medium mb-3 flex items-center gap-2">
                     <MessageCircle className="h-4 w-4" />
-                    Message Variants
+                    Message Variation Strategy
                   </h3>
                   
-                  <div className="space-y-3">
-                    <div>
-                      <Label htmlFor="variantType">Message Variation Type</Label>
-                      <Select 
-                        value={messageVariantType}
-                        onValueChange={(value: 'static' | 'ai_random') => setMessageVariantType(value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select variation type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="static">
-                            <div className="flex items-center gap-2">
-                              <FileText className="h-4 w-4" />
-                              Use Selected Variants
+                  <RadioGroup 
+                    value={messageVariationType} 
+                    onValueChange={handleVariationTypeChange}
+                    className="space-y-3"
+                  >
+                    {/* Single Variant Option */}
+                    <div className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-accent/50 transition-colors">
+                      <RadioGroupItem value="single_variant" id="single_variant" />
+                      <div className="flex-1 space-y-2">
+                        <Label htmlFor="single_variant" className="flex items-center gap-2 font-medium cursor-pointer">
+                          <FileText className="h-4 w-4" />
+                          Single Message Variant
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Send the same message content to all recipients
+                        </p>
+                        
+                        {messageVariationType === "single_variant" && (
+                          <div className="mt-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label htmlFor="customMessage">Message Content *</Label>
+                              {selectedAIMessage && (
+                                <div className="flex gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleUseBaseMessage}
+                                    disabled={!selectedAIMessage.baseMessage}
+                                  >
+                                    <Copy className="h-3 w-3 mr-1" />
+                                    Use Base
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleUseOriginalPrompt}
+                                    disabled={!selectedAIMessage.originalPrompt}
+                                  >
+                                    <Copy className="h-3 w-3 mr-1" />
+                                    Use Prompt
+                                  </Button>
+                                </div>
+                              )}
                             </div>
-                          </SelectItem>
-                          <SelectItem value="ai_random">
-                            <div className="flex items-center gap-2">
-                              <Zap className="h-4 w-4" />
-                              AI Random Generation
+                            <Textarea 
+                              id="customMessage"
+                              placeholder="Enter your SMS message here..."
+                              className="min-h-[100px] font-mono text-sm"
+                              value={customMessageContent}
+                              onChange={(e) => handleCustomMessageChange(e.target.value)}
+                            />
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span>{getMessageStats(customMessageContent).charCount} characters</span>
+                              <span>{getMessageStats(customMessageContent).segments} SMS segment(s)</span>
+                              <span className={getMessageStats(customMessageContent).encoding === 'USC2' ? 'text-amber-600' : ''}>
+                                {getMessageStats(customMessageContent).encoding} encoding
+                              </span>
                             </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    {messageVariantType === 'ai_random' && (
-                      <div>
-                        <Label htmlFor="aiPrompt">AI Prompt for Message Generation</Label>
-                        <Textarea 
-                          id="aiPrompt"
-                          placeholder="Describe the type of messages you want to generate. For example: 'Friendly promotional messages for a winter sale with urgency'..."
-                          value={campaignForm.message_content}
-                          onChange={(e) => setCampaignForm(prev => ({ 
-                            ...prev, 
-                            message_content: e.target.value 
-                          }))}
-                          className="min-h-[80px]"
-                        />
-                        <div className="text-xs text-muted-foreground mt-1">
-                          AI will generate unique message variants based on this prompt for each contact
-                        </div>
+                    {/* Multiple Variants Option */}
+                    <div className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-accent/50 transition-colors">
+                      <RadioGroupItem 
+                        value="multiple_variants" 
+                        id="multiple_variants" 
+                        disabled={!selectedMessageId || messageVariants.length === 0}
+                      />
+                      <div className="flex-1 space-y-2">
+                        <Label htmlFor="multiple_variants" className="flex items-center gap-2 font-medium cursor-pointer">
+                          <Shuffle className="h-4 w-4" />
+                          Multiple AI Variants
+                          {selectedMessageId && messageVariants.length > 0 && (
+                            <Badge variant="secondary" className="ml-2">
+                              {messageVariants.length} variants
+                            </Badge>
+                          )}
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Rotate between different AI-generated message variants
+                        </p>
+                        
+                        {!selectedMessageId && (
+                          <Alert className="mt-2">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>
+                              Select an AI message above to enable multiple variants
+                            </AlertDescription>
+                          </Alert>
+                        )}
+
+                        {messageVariationType === "multiple_variants" && selectedMessageId && (
+                          <div className="mt-3 space-y-2">
+                            <Label htmlFor="messageVariant">Select Variant to Preview</Label>
+                            <Select 
+                              value={selectedVariantId}
+                              onValueChange={handleVariantSelect}
+                              disabled={loadingVariants}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder={
+                                  loadingVariants ? "Loading variants..." : "Select a variant to preview..."
+                                } />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {messageVariants.map((variant) => (
+                                  <SelectItem key={variant._id} value={variant._id}>
+                                    <div className="flex flex-col items-start">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium capitalize">{variant.tone}</span>
+                                        <Badge variant="outline" className="text-xs">
+                                          {variant.characterCount} chars
+                                        </Badge>
+                                      </div>
+                                      <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                        {variant.content.substring(0, 60)}...
+                                      </span>
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            
+                            {selectedVariantId && (
+                              <div className="mt-3 p-3 bg-muted rounded-lg">
+                                <Label className="text-sm font-medium">Preview Selected Variant</Label>
+                                <div className="mt-2 p-3 bg-background rounded border">
+                                  <p className="text-sm whitespace-pre-wrap">{customMessageContent}</p>
+                                </div>
+                                <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                                  <span>{getMessageStats(customMessageContent).charCount} characters</span>
+                                  <span>{getMessageStats(customMessageContent).segments} SMS segment(s)</span>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {loadingVariants && (
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Loading message variants...
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
-                
-                {/* Message Content */}
-                <div>
-                  <Label htmlFor="message">Message Content *</Label>
-                  <Textarea 
-                    id="message" 
-                    placeholder="Enter your SMS message here..."
-                    className="min-h-[100px]"
-                    value={campaignForm.message_content}
-                    onChange={(e) => setCampaignForm(prev => ({ ...prev, message_content: e.target.value }))}
-                  />
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {campaignForm.message_content.length} characters • {Math.ceil(campaignForm.message_content.length / 160)} SMS segment(s)
-                    {campaignForm.message_content.length > 160 && (
-                      <span className="text-amber-600 ml-2">Long message (USC2 encoding will be used)</span>
-                    )}
-                  </div>
+                    </div>
+
+                    {/* AI Random Generation Option */}
+                    <div className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-accent/50 transition-colors">
+                      <RadioGroupItem 
+                        value="ai_random" 
+                        id="ai_random" 
+                        disabled={!selectedAIMessage}
+                      />
+                      <div className="flex-1 space-y-2">
+                        <Label htmlFor="ai_random" className="flex items-center gap-2 font-medium cursor-pointer">
+                          <Wand2 className="h-4 w-4" />
+                          AI Random Generation
+                          {selectedAIMessage && (
+                            <Badge variant="secondary" className="ml-2">
+                              Using: {selectedAIMessage.name}
+                            </Badge>
+                          )}
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Generate unique AI messages for each contact using your selected AI message
+                        </p>
+                        
+                        {!selectedAIMessage && (
+                          <Alert className="mt-2">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>
+                              Select an AI message above to enable random generation
+                            </AlertDescription>
+                          </Alert>
+                        )}
+
+                        {messageVariationType === "ai_random" && selectedAIMessage && (
+                          <div className="mt-3 space-y-3">
+                            {/* Original Prompt Preview */}
+                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                              <div className="flex items-start gap-2">
+                                <FileText className="h-4 w-4 text-blue-600 mt-0.5" />
+                                <div className="flex-1">
+                                  <h4 className="text-sm font-medium text-blue-900 mb-1">Original Prompt</h4>
+                                  <p className="text-sm text-blue-800 whitespace-pre-wrap">
+                                    {selectedAIMessage.originalPrompt}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Base Message Preview */}
+                            {selectedAIMessage.baseMessage && (
+                              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                <div className="flex items-start gap-2">
+                                  <MessageCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                                  <div className="flex-1">
+                                    <h4 className="text-sm font-medium text-green-900 mb-1">Base Message</h4>
+                                    <p className="text-sm text-green-800 whitespace-pre-wrap">
+                                      {selectedAIMessage.baseMessage}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* AI Generation Features */}
+                            <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                              <div className="flex items-start gap-2">
+                                <Zap className="h-4 w-4 text-purple-600 mt-0.5" />
+                                <div>
+                                  <h4 className="text-sm font-medium text-purple-900">AI Generation Features</h4>
+                                  <ul className="text-xs text-purple-700 mt-1 space-y-1">
+                                    <li>• Unique messages for each recipient based on your prompt</li>
+                                    <li>• Maintains campaign intent while varying wording</li>
+                                    <li>• Optimized for deliverability and engagement</li>
+                                    <li>• Automatic spam score optimization</li>
+                                    <li>• Uses: {selectedAIMessage.name} ({selectedAIMessage.category})</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Settings Preview */}
+                            {selectedAIMessage.settings && Object.keys(selectedAIMessage.settings).length > 0 && (
+                              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                <div className="flex items-start gap-2">
+                                  <Eye className="h-4 w-4 text-amber-600 mt-0.5" />
+                                  <div className="flex-1">
+                                    <h4 className="text-sm font-medium text-amber-900 mb-1">AI Settings</h4>
+                                    <div className="text-xs text-amber-800 space-y-1">
+                                      {Object.entries(selectedAIMessage.settings).map(([key, value]) => (
+                                        <div key={key} className="flex justify-between">
+                                          <span className="capitalize">{key}:</span>
+                                          <span>{String(value)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </RadioGroup>
                 </div>
 
-                {/* Schedule Settings */}
+                {/* Schedule Settings and other sections remain the same */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="scheduleType">Schedule Type</Label>
@@ -873,6 +1140,7 @@ export function CampaignManagement() {
         </div>
       </div>
 
+      {/* Rest of the component remains the same */}
       <Tabs defaultValue="campaigns" className="space-y-6">
         <TabsList>
           <TabsTrigger value="campaigns">Active Campaigns</TabsTrigger>
