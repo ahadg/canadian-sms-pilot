@@ -49,7 +49,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       return;
     }
 
-    const socket = io(import.meta.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000', {
+    const socket = io(import.meta.env.NEXT_PUBLIC_API_BASE_URL || 'http://212.56.32.203:3000', {
       auth: {
         token: token
       },

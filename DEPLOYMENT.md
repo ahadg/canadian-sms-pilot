@@ -300,6 +300,6 @@ If you encounter issues:
 1. Check the logs: `docker-compose logs -f`
 2. Verify environment variables: `cat .env`
 3. Check system resources: `htop` or `docker stats`
-4. Verify network connectivity: `curl -I http://localhost`
+4. Verify network connectivity: `curl -I http://212.56.32.203`
 
 For additional help, refer to the application logs and Docker documentation.
