@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-const API_BASE_URL = import.meta.env.NEXT_PUBLIC_API_BASE_URL || 'http://212.56.32.203:3000';
+const API_BASE_URL = import.meta.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
 
 export const useAuthStore = create(
   persist(
@@ -163,6 +163,51 @@ export const useAuthStore = create(
 
           if (!response.ok) {
             throw new Error(data.reason || 'Password change failed');
+          }
+
+          return { success: true, data };
+        } catch (error) {
+          return { success: false, error: error.message };
+        }
+      },
+      // Forgot password function
+      forgotPassword: async (email) => {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.reason || 'Failed to send reset email');
+          }
+
+          return { success: true, data };
+        } catch (error) {
+          return { success: false, error: error.message };
+        }
+      },
+
+      // Reset password function
+      resetPassword: async (token, newPassword) => {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ token, newPassword }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.reason || 'Failed to reset password');
           }
 
           return { success: true, data };

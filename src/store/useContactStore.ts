@@ -92,6 +92,7 @@ export const useContactStore = create<ContactState>((set, get) => ({
   contacts: [],
   contactLists: [],
   loading: false,
+  contactsloaded : false,
   importing: false,
   pagination: {
     currentPage: 1,
@@ -161,7 +162,7 @@ export const useContactStore = create<ContactState>((set, get) => ({
           totalPages: response.data.totalPages || 1,
           total: response.data.total || 0,
           limit: response.data.limit || 50
-        }
+        },
       });
       
       return contactsData;

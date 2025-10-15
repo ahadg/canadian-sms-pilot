@@ -57,7 +57,6 @@ import {
 } from "lucide-react";
 import { Device, useCampaigns } from "@/hooks/useCampaigns";
 import { toast } from "sonner";
-import { ContactManager } from "./ContactManager";
 import { messageAPI, MessageVariant, SavedMessage } from "@/lib/api/messages";
 import { contactAPI } from "@/lib/api/contacts";
 import { Campaign } from "@/lib/api/campaign";
@@ -114,10 +113,14 @@ export function CampaignManagement() {
 
   const {
     contactLists,
-    deleteContactList,
     refreshContactLists
   } = useContactStore();
+  console.log("contactLists",contactLists)
 
+    // Load contact lists when component mounts
+    useEffect(() => {
+      refreshContactLists();
+    }, []); // Empty dependency array to run only once
   // Use Zustand socket store
   const { 
     isConnected, 
@@ -155,10 +158,8 @@ export function CampaignManagement() {
     }
   }, [campaignUpdates, setCampaigns]);
 
-  const [selectedContactListId, setSelectedContactListId] = useState<string | null>(null);
   const [isCreateCampaignOpen, setIsCreateCampaignOpen] = useState(false);
   const [isCreateContactListOpen, setIsCreateContactListOpen] = useState(false);
-  const [isContactManagerOpen, setIsContactManagerOpen] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
 
   // Message variant state
@@ -185,7 +186,7 @@ export function CampaignManagement() {
     name: '',
     message_content: CANADIAN_SMS_TEMPLATE,
     contactList: '',
-    priority: 'normal' as 'low' | 'normal' | 'high',
+    // priority: 'normal' as 'low' | 'normal' | 'high',
     status: 'scheduled' as 'scheduled' | 'active' | 'paused' | 'completed',
     device: '',
   });
@@ -382,7 +383,7 @@ export function CampaignManagement() {
         name: campaignForm.name,
         messageContent: campaignForm.message_content,
         contactList: campaignForm.contactList || undefined,
-        priority: campaignForm.priority,
+        // priority: campaignForm.priority,
         status: campaignForm.status,
         device: campaignForm.device,
         taskSettings: finalTaskSettings,
@@ -417,7 +418,7 @@ export function CampaignManagement() {
         name: '',
         message_content: CANADIAN_SMS_TEMPLATE,
         contactList: '',
-        priority: 'normal',
+        // priority: 'normal',
         status: 'scheduled',
         device: devices.length > 0 ? devices[0].id : ''
       });
@@ -514,13 +515,6 @@ export function CampaignManagement() {
     return (campaign.sentMessages / campaign.totalContacts) * 100;
   };
 
-  // Format time
-  const formatTime = (milliseconds: number) => {
-    const seconds = Math.floor(milliseconds / 1000);
-    if (seconds < 60) return `${seconds} seconds`;
-    const minutes = Math.floor(seconds / 60);
-    return `${minutes} minute${minutes > 1 ? 's' : ''}`;
-  };
 
   // Get character count and SMS segments
   const getMessageStats = (message: string) => {
@@ -941,47 +935,6 @@ export function CampaignManagement() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label htmlFor="priority">Priority</Label>
-                    <Select 
-                      value={campaignForm.priority}
-                      onValueChange={(value) => setCampaignForm(prev => ({ ...prev, priority: value as 'low' | 'normal' | 'high' }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select priority" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="normal">Normal</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Daily Limits Section */}
-                <div className="border-t pt-4">
-                  <h3 className="font-medium mb-3 flex items-center gap-2">
-                    <Target className="h-4 w-4" />
-                    Daily Limits
-                  </h3>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="dailyLimit">Daily Message Limit</Label>
-                      <Input 
-                        id="dailyLimit"
-                        type="number" 
-                        value={dailyMessageLimit}
-                        onChange={(e) => setDailyMessageLimit(parseInt(e.target.value) || 300)}
-                        min="1"
-                        max="10000"
-                      />
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Campaign will pause after sending {dailyMessageLimit} messages and resume next day automatically
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 {/* Sending Interval Section */}
@@ -1235,14 +1188,15 @@ export function CampaignManagement() {
                         <TableHead>Status</TableHead>
                         <TableHead>Progress</TableHead>
                         <TableHead>Delivery Rate</TableHead>
-                        <TableHead>Daily Limit</TableHead>
+                        {/* <TableHead>Daily Limit</TableHead> */}
                         <TableHead>Created</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {campaigns.map((campaign: Campaign) => {
-                        const assignedDevice = devices.find(d => d.id === campaign.device);
+                        console.log("campaign_campaign",campaign)
+                        const assignedDevice = campaign.device
                         const progress = getCampaignProgress(campaign);
                         const deliveryRate = getDeliveryRate(campaign);
                         
@@ -1284,11 +1238,11 @@ export function CampaignManagement() {
                                 {deliveryRate.toFixed(1)}%
                               </div>
                             </TableCell>
-                            <TableCell>
+                            {/* <TableCell>
                               <div className="text-sm text-muted-foreground">
                                 {campaign.taskSettings?.dailyMessageLimit || 300}/day
                               </div>
-                            </TableCell>
+                            </TableCell> */}
                             <TableCell className="text-sm text-muted-foreground">
                               {new Date(campaign.createdAt).toLocaleDateString()}
                             </TableCell>
