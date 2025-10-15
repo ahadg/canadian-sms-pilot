@@ -231,12 +231,10 @@ const stopCampaign = async (campaignId: string) => {
         timeout: campaign.taskSettings?.timeout || 30,
         charset: campaign.taskSettings?.charset?.toLowerCase() === 'utf-8' ? 'utf8' : campaign.taskSettings?.charset?.toLowerCase() || 'utf8',
         coding: campaign.taskSettings?.coding || 0,
-        sms_type: campaign.taskSettings?.sms_type || 0,
         sdr: campaign.taskSettings?.sdr !== false, // Default to true if not specified
         fdr: campaign.taskSettings?.fdr !== false,
         dr: campaign.taskSettings?.dr !== false,
         to_all: campaign.taskSettings?.to_all || true,
-        flash_sms: campaign.taskSettings?.flash_sms || false,
         sms_count: campaign.taskSettings?.sms_count || 100,
         sms_period: campaign.taskSettings?.sms_period || 60,
         recipients: phoneNumbers,

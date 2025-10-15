@@ -69,6 +69,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CampaignDetailsDialog } from "./CampaignDetailsDialog";
 
 // Canadian SMS rules template
 const CANADIAN_SMS_TEMPLATE = `Your message here. Reply STOP to unsubscribe.`;
@@ -84,7 +85,6 @@ const defaultTaskSettings = {
   fdr: true,
   dr: true,
   to_all: false,
-  flash_sms: false,
   sms_count: 100,
   sms_period: 60,
   dailyMessageLimit: 300,
@@ -161,6 +161,8 @@ export function CampaignManagement() {
   const [isCreateCampaignOpen, setIsCreateCampaignOpen] = useState(false);
   const [isCreateContactListOpen, setIsCreateContactListOpen] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
 
   // Message variant state
   const [selectedMessageId, setSelectedMessageId] = useState<string>('');
@@ -190,6 +192,12 @@ export function CampaignManagement() {
     status: 'scheduled' as 'scheduled' | 'active' | 'paused' | 'completed',
     device: '',
   });
+
+  // Add this function with your other handlers
+  const handleViewCampaign = (campaign: Campaign) => {
+    setSelectedCampaign(campaign);
+    setIsDetailsDialogOpen(true);
+  };
 
   console.log("campaignForm", campaignForm);
 
@@ -1196,7 +1204,7 @@ export function CampaignManagement() {
                     <TableBody>
                       {campaigns.map((campaign: Campaign) => {
                         console.log("campaign_campaign",campaign)
-                        const assignedDevice = campaign.device
+                        const assignedDevice = campaign.device as any
                         const progress = getCampaignProgress(campaign);
                         const deliveryRate = getDeliveryRate(campaign);
                         
@@ -1301,15 +1309,13 @@ export function CampaignManagement() {
                                     </Button>
                                   </>
                                 )}
+                                {/* Replace Edit button with View button */}
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  onClick={() => {
-                                    // Edit campaign logic here
-                                    toast.info('Edit feature coming soon');
-                                  }}
+                                  onClick={() => handleViewCampaign(campaign)}
                                 >
-                                  <Edit className="h-3 w-3" />
+                                  <Eye className="h-3 w-3" />
                                 </Button>
                               </div>
                             </TableCell>
@@ -1323,6 +1329,13 @@ export function CampaignManagement() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Campaign Details Dialog */}
+        <CampaignDetailsDialog
+          campaign={selectedCampaign}
+          isOpen={isDetailsDialogOpen}
+          onClose={() => setIsDetailsDialogOpen(false)}
+        />
 
         <TabsContent value="contacts" className="space-y-6">
           {/* Contact Lists */}

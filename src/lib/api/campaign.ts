@@ -24,14 +24,13 @@ export interface Campaign {
     timeout: number;
     charset: string;
     coding: number;
-    sms_type: number;
     sdr: boolean;
     fdr: boolean;
     dr: boolean;
     to_all: boolean;
-    flash_sms: boolean;
     sms_count: number;
     sms_period: number;
+    messageVariantType : string;
   };
   user: string;
   }
