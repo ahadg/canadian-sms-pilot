@@ -322,7 +322,7 @@ export const useMessagesStore = create<MessagesState>()(
           // First try to get messages from the API
           const apiResponse = await authFetch(`/api/sms?deviceId=${selectedDevice._id}&limit=1000`);
           
-          if (apiResponse && apiResponse.success) {
+          if (apiResponse && apiResponse.code == 200) {
             const messagesData = apiResponse.data.messages || [];
             set({ messages: messagesData });
             

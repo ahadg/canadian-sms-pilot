@@ -53,7 +53,9 @@ import {
   CheckCircle,
   AlertCircle,
   Eye,
-  Copy
+  Copy,
+  RotateCcw,
+  AlertTriangle
 } from "lucide-react";
 import { Device, useCampaigns } from "@/hooks/useCampaigns";
 import { toast } from "sonner";
@@ -1211,19 +1213,47 @@ export function CampaignManagement() {
                         return (
                           <TableRow key={campaign._id}>
                             <TableCell>
-                              <div>
-                                <div className="font-medium">{campaign.name}</div>
-                                <div className="text-xs text-muted-foreground truncate max-w-xs">
-                                  {campaign.messagePreview || campaign.messageContent?.substring(0, 50) + '...'}
-                                </div>
-                                {campaign.taskSettings?.messageVariantType === 'ai_random' && (
-                                  <Badge variant="outline" className="mt-1">
-                                    <Zap className="h-3 w-3 mr-1" />
-                                    AI Variants
-                                  </Badge>
+                              <div className="space-y-2">
+                                {/* Campaign Name */}
+                                <div className="font-semibold text-sm">{campaign.name}</div>
+
+                                {/* Message Preview */}
+                                {(campaign.messagePreview || campaign.messageContent) && (
+                                  <div className="text-xs text-muted-foreground/80 line-clamp-2 max-w-md leading-relaxed">
+                                    {campaign.messagePreview || campaign.messageContent?.substring(0, 80) + '...'}
+                                  </div>
+                                )}
+
+                                {/* Status Badges */}
+                                {(campaign.taskSettings?.messageVariantType === 'ai_random' || 
+                                  campaign.pauseReason === 'daily_limit_reached' || 
+                                  campaign.pauseReason === 'resume_requested') && (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {campaign.taskSettings?.messageVariantType === 'ai_random' && (
+                                      <Badge variant="outline" className="flex items-center gap-1 px-2 py-0.5 text-xs border-purple-200 text-purple-700 bg-purple-50">
+                                        <Zap className="h-3 w-3" />
+                                        AI Variants
+                                      </Badge>
+                                    )}
+
+                                    {campaign.pauseReason === 'daily_limit_reached' && (
+                                      <Badge variant="secondary" className="flex items-center gap-1 px-2 py-0.5 text-xs bg-amber-50 text-amber-700 border-amber-200">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        Daily Limit
+                                      </Badge>
+                                    )}
+
+                                    {campaign.pauseReason === "resume_requested" && (
+                                      <Badge variant="secondary" className="flex items-center gap-1 px-2 py-0.5 text-xs bg-sky-50 text-sky-700 border-sky-200">
+                                        <RotateCcw className="h-3 w-3" />
+                                        Resuming
+                                      </Badge>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             </TableCell>
+
                             <TableCell>
                               <div className="text-sm text-muted-foreground">
                                 {assignedDevice ? assignedDevice.name : 'No device'}

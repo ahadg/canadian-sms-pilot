@@ -83,6 +83,20 @@ export class EjoinAPIService {
     }
   }
 
+  // Update device settings
+static async updateDeviceSettings(deviceId: string, settings: { dailyLimit: number }): Promise<{success: boolean, device?: Device, message?: string}> {
+  try {
+    const response = await deviceAPI.update(deviceId, {
+      dailyLimit: settings.dailyLimit,
+      updatedAt: new Date().toISOString()
+    });
+    return { success: true, device: response.data.device };
+  } catch (error: any) {
+    console.error('Error updating device settings:', error);
+    return { success: false, message: error.message };
+  }
+}
+
   static async getDevices(): Promise<DeviceStatus | null> {
     try {
       const response = await deviceAPI.getAll();;

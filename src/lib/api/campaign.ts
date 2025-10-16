@@ -18,6 +18,7 @@ export interface Campaign {
   priority: 'low' | 'normal' | 'high';
   contactList?: string;
   device?: string;
+  pauseReason?: string;
   taskSettings?: {
     interval_min: number;
     interval_max: number;

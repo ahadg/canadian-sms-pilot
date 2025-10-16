@@ -45,9 +45,9 @@ import { supabase } from "@/lib/supabase";
 import { EjoinAPIService } from "../../lib/api/devices";
 
 interface Device {
+  _id : string;
   id: string;
   name: string;
-  ip_address: string;
   port: number;
   username: string;
   password: string;
@@ -63,6 +63,8 @@ interface Device {
   macAddress: string;
   firmwareVersion: string;
   updated_at: string;
+  dailyLimit: number;
+  ipAddress: string;
 }
 
 interface SIMCard {
@@ -97,6 +99,10 @@ export function DeviceManagement() {
   const [simCards, setSimCards] = useState<SIMCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
+  const [dailyLimit, setDailyLimit] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
   const [newDevice, setNewDevice] = useState({
     name: "",
     ipAddress: "",
@@ -144,6 +150,39 @@ export function DeviceManagement() {
       toast.error('Failed to load devices');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (!editingDevice) return;
+  
+    setIsSaving(true);
+    try {
+      const result = await EjoinAPIService.updateDeviceSettings(editingDevice._id, {
+        dailyLimit: dailyLimit
+      });
+  
+      if (result.success && result.device) {
+        // Update the device in local state
+        setDevices(prev => prev.map(d => 
+          d._id === editingDevice._id ? { ...d, dailyLimit: dailyLimit } : d
+        ));
+        
+        // If the edited device is currently selected, update it too
+        if (selectedDevice?._id === editingDevice._id) {
+          setSelectedDevice(prev => prev ? { ...prev, dailyLimit: dailyLimit } : null);
+        }
+        
+        toast.success('Settings updated successfully');
+        setSettingsDialogOpen(false);
+      } else {
+        toast.error(result.message || 'Failed to update settings');
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast.error('Failed to update settings');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -511,6 +550,10 @@ export function DeviceManagement() {
                   value={device.totalSlots > 0 ? (device.activeSlots / device.totalSlots) * 100 : 0}
                   className="h-2"
                 />
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">Daily Limit</span>
+                  <span className="font-semibold text-green-600">{device.dailyLimit || 100}</span>
+                </div>
               </div>
 
               <div className="flex gap-2 pt-2">
@@ -518,10 +561,15 @@ export function DeviceManagement() {
                   variant="outline" 
                   size="sm" 
                   className="flex-1"
-                  onClick={() => setSelectedDevice(device)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingDevice(device);
+                    setDailyLimit(device.dailyLimit || 100); // Default to 100 if not set
+                    setSettingsDialogOpen(true);
+                  }}
                 >
-                  <Activity className="h-4 w-4 mr-2" />
-                  Monitor
+                  <Settings className="h-4 w-4 mr-2" />
+                  Settings
                 </Button>
                 <Button 
                   variant="outline" 
@@ -828,72 +876,132 @@ export function DeviceManagement() {
 
       {/* USSD History Dialog */}
       <Dialog open={!!selectedSimForHistory} onOpenChange={() => setSelectedSimForHistory(null)}>
-  <DialogContent className="max-w-2xl max-h-[80vh]">
-    <DialogHeader>
-      <DialogTitle className="flex items-center gap-2">
-        <History className="h-5 w-5" />
-        USSD Command History
-      </DialogTitle>
-      <DialogDescription>
-        Port {selectedSimForHistory?.port} command history
-      </DialogDescription>
-    </DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[80vh]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            USSD Command History
+          </DialogTitle>
+          <DialogDescription>
+            Port {selectedSimForHistory?.port} command history
+          </DialogDescription>
+        </DialogHeader>
 
-    <div className="space-y-3 overflow-y-auto max-h-[60vh]">
-      {selectedSimForHistory ? (
-        (() => {
-    
+        <div className="space-y-3 overflow-y-auto max-h-[60vh]">
+          {selectedSimForHistory ? (
+            (() => {
+        
 
-          return ussdHistory.length > 0 ? (
-            ussdHistory.map((cmd) => (
-              <Card key={cmd._id} className="p-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="font-mono">
-                        {cmd.command}
-                      </Badge>
-                      {getUSSDStatusBadge(cmd.status)}
+              return ussdHistory.length > 0 ? (
+                ussdHistory.map((cmd) => (
+                  <Card key={cmd._id} className="p-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="font-mono">
+                            {cmd.command}
+                          </Badge>
+                          {getUSSDStatusBadge(cmd.status)}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(cmd.timestamp).toLocaleString()}
+                        </span>
+                      </div>
+
+                      {/* Response block */}
+                      {cmd.response && cmd.response.trim() !== "" && (
+                        <div className="bg-gray-50 p-3 rounded-md">
+                          <p className="text-xs font-semibold text-gray-600 mb-1">Response:</p>
+                          <p className="text-sm whitespace-pre-wrap">{cmd.response}</p>
+                        </div>
+                      )}
+
+                      {/* Error block */}
+                      {cmd.error && (
+                        <div className="bg-red-50 p-3 rounded-md">
+                          <p className="text-xs font-semibold text-red-600 mb-1">Error:</p>
+                          <p className="text-sm text-red-700">{cmd.error}</p>
+                        </div>
+                      )}
                     </div>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(cmd.timestamp).toLocaleString()}
-                    </span>
-                  </div>
-
-                  {/* Response block */}
-                  {cmd.response && cmd.response.trim() !== "" && (
-                    <div className="bg-gray-50 p-3 rounded-md">
-                      <p className="text-xs font-semibold text-gray-600 mb-1">Response:</p>
-                      <p className="text-sm whitespace-pre-wrap">{cmd.response}</p>
-                    </div>
-                  )}
-
-                  {/* Error block */}
-                  {cmd.error && (
-                    <div className="bg-red-50 p-3 rounded-md">
-                      <p className="text-xs font-semibold text-red-600 mb-1">Error:</p>
-                      <p className="text-sm text-red-700">{cmd.error}</p>
-                    </div>
-                  )}
+                  </Card>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <History className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-muted-foreground">No USSD command history available</p>
                 </div>
-              </Card>
-            ))
+              );
+            })()
           ) : (
             <div className="text-center py-8">
               <History className="h-12 w-12 text-gray-400 mx-auto mb-3" />
               <p className="text-muted-foreground">No USSD command history available</p>
             </div>
-          );
-        })()
-      ) : (
-        <div className="text-center py-8">
-          <History className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-          <p className="text-muted-foreground">No USSD command history available</p>
+          )}
         </div>
-      )}
-    </div>
-  </DialogContent>
-</Dialog>
+      </DialogContent>
+      </Dialog>
+
+      {/* Settings Dialog */}
+      <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Device Settings
+            </DialogTitle>
+            <DialogDescription>
+              Configure settings for {editingDevice?.name}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="dailyLimit">Daily SMS Limit</Label>
+              <Input
+                id="dailyLimit"
+                type="number"
+                placeholder="Enter daily SMS limit"
+                value={dailyLimit}
+                onChange={(e) => setDailyLimit(parseInt(e.target.value) || 0)}
+                min="0"
+                max="10000"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Maximum number of SMS messages allowed per day
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setSettingsDialogOpen(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveSettings}
+                disabled={isSaving}
+                className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
