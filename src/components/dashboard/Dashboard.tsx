@@ -130,14 +130,14 @@ export function Dashboard() {
             variant="info"
             trend={{ value: 8.7, label: "growth" }}
           />
-          <StatsCard
+          {/* <StatsCard
             title="Avg Sms Today"
             value={`${stats.averageProcessingTimeToday / 1000 || '0.00'} sec`}
             description="Avg Sms sending"
             icon={DollarSign}
             variant="default"
             trend={{ value: -12.5, label: "vs yesterday" }}
-          />
+          /> */}
         </div>
       )}
 

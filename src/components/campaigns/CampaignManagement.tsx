@@ -118,7 +118,7 @@ export function CampaignManagement() {
     refreshContactLists
   } = useContactStore();
   console.log("contactLists",contactLists)
-
+  const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
     // Load contact lists when component mounts
     useEffect(() => {
       refreshContactLists();
@@ -369,7 +369,7 @@ export function CampaignManagement() {
       toast.error('Please fill in all required fields including device selection');
       return;
     }
-   
+    setIsCreatingCampaign(true); // Start loading
     try {
       const { data: contacts_lists, error: contactsError } = await contactAPI.getListById(campaignForm.contactList);
       console.log("contacts_lists", campaignForm.contactList, contacts_lists);
@@ -446,6 +446,7 @@ export function CampaignManagement() {
       console.error('Error creating campaign:', error);
       toast.error('Failed to create campaign');
     }
+    setIsCreatingCampaign(false); // Start loading
   };
 
   // Handle campaign actions (keep existing functions)
@@ -875,23 +876,6 @@ export function CampaignManagement() {
                               </div>
                             )}
 
-                            {/* AI Generation Features */}
-                            <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                              <div className="flex items-start gap-2">
-                                <Zap className="h-4 w-4 text-purple-600 mt-0.5" />
-                                <div>
-                                  <h4 className="text-sm font-medium text-purple-900">AI Generation Features</h4>
-                                  <ul className="text-xs text-purple-700 mt-1 space-y-1">
-                                    <li>• Unique messages for each recipient based on your prompt</li>
-                                    <li>• Maintains campaign intent while varying wording</li>
-                                    <li>• Optimized for deliverability and engagement</li>
-                                    <li>• Automatic spam score optimization</li>
-                                    <li>• Uses: {selectedAIMessage.name} ({selectedAIMessage.category})</li>
-                                  </ul>
-                                </div>
-                              </div>
-                            </div>
-
                             {/* Settings Preview */}
                             {selectedAIMessage.settings && Object.keys(selectedAIMessage.settings).length > 0 && (
                               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -1089,13 +1073,22 @@ export function CampaignManagement() {
                     Cancel
                   </Button>
                   <Button 
-                    className="flex-1 bg-blue-600 hover:bg-blue-700" 
-                    onClick={handleCreateCampaign}
-                    disabled={!campaignForm.name || !campaignForm.message_content || !campaignForm.device}
-                  >
-                    <Send className="h-4 w-4 mr-2" />
-                    Create Campaign
-                  </Button>
+                  className="flex-1 bg-blue-600 hover:bg-blue-700" 
+                  onClick={handleCreateCampaign}
+                  disabled={!campaignForm.name || !campaignForm.message_content || !campaignForm.device || isCreatingCampaign}
+                >
+                  {isCreatingCampaign ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creating Campaign...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4 mr-2" />
+                      Create Campaign
+                    </>
+                  )}
+                </Button>
                 </div>
               </div>
             </DialogContent>

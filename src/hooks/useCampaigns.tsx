@@ -373,31 +373,31 @@ const createCampaign = async (campaignData: any) => {
     });
     
     let newCampaign = response.data.campaign;
-    if(campaignData.status === 'active'){
-      // 2) Fetch opted-in contacts for that list
-      const contactsResponse = await contactAPI.getContacts(campaignData.contactList, {
-        status: 'active',
-        optedIn: true
-      });
-      console.log("contactsResponse",contactsResponse)
-      const contacts = contactsResponse.data.contacts || [];
+    // if(campaignData.status === 'active'){
+    //   // 2) Fetch opted-in contacts for that list
+    //   const contactsResponse = await contactAPI.getContacts(campaignData.contactList, {
+    //     status: 'active',
+    //     optedIn: true
+    //   });
+    //   console.log("contactsResponse",contactsResponse)
+    //   const contacts = contactsResponse.data.contacts || [];
   
-      if (contacts.length === 0) {
-        throw new Error('No opted-in contacts found in the selected list');
-      }
+    //   if (contacts.length === 0) {
+    //     throw new Error('No opted-in contacts found in the selected list');
+    //   }
   
-      // 3) Send messages
-      await sendCampaignSms(
-        newCampaign?._id,
-        newCampaign?.device?._id,
-        contacts
-      );
+    //   // 3) Send messages
+    //   await sendCampaignSms(
+    //     newCampaign?._id,
+    //     newCampaign?.device?._id,
+    //     contacts
+    //   );
 
-      let updatedCampaign = await campaignAPI.getById(newCampaign?._id);
-      console.log("updatedCampaign",updatedCampaign)
-      setCampaigns(prev => prev.map(campaign => campaign._id === newCampaign?._id ? updatedCampaign.data.campaign : campaign));
+    //   let updatedCampaign = await campaignAPI.getById(newCampaign?._id);
+    //   console.log("updatedCampaign",updatedCampaign)
+    //   setCampaigns(prev => prev.map(campaign => campaign._id === newCampaign?._id ? updatedCampaign.data.campaign : campaign));
   
-    }
+    // }
     setCampaigns(prev => [newCampaign, ...prev]);
     toast.success('Campaign created successfully');
     return newCampaign;

@@ -2,7 +2,7 @@ import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useAuthStore } from '@/store/useAuthStore';
 
 export const baseURL =
-import.meta.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+import.meta.env.NEXT_PUBLIC_API_BASE_URL || 'http://212.56.32.203:3000';
 
 // Create an axios instance with defaults
 const api = axios.create({

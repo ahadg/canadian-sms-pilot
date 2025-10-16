@@ -465,7 +465,7 @@ export function Inbox() {
                         <div>
                         <span>Port {conversation.port}-{conversation.slot}</span>
                         </div>
-                        {conversation.contact?.isReport && <PhoneOffIcon className="h-3 w-3" color="red" />}
+                        {conversation?.isReport || conversation.contact?.isReport && <PhoneOffIcon className="h-3 w-3" color="red" />}
                       </div>
                     </div>
                   ))
