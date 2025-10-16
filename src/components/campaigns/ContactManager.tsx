@@ -270,8 +270,8 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl h-[90vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="max-w-7xl h-[90vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
             {currentContactList?.name} - Contact Management
@@ -284,14 +284,14 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "view" | "add" | "import")} className="space-y-4">
-          <TabsList>
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "view" | "add" | "import")} className="flex flex-col flex-1 overflow-hidden">
+          <TabsList className="flex-shrink-0">
             <TabsTrigger value="view">View Contacts</TabsTrigger>
             <TabsTrigger value="add">Add Contact</TabsTrigger>
             <TabsTrigger value="import">Import</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="view" className="space-y-4">
+          <div className="flex-1 overflow-y-auto pr-2 mt-4">
+          <TabsContent value="view" className="space-y-4 pb-8 m-0">
             {/* Filters and Search */}
             <Card>
               <CardContent className="p-4">
@@ -534,7 +534,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
             </Card>
           </TabsContent>
 
-          <TabsContent value="add" className="space-y-4">
+          <TabsContent value="add" className="space-y-4 pb-8 m-0">
             <Card>
               <CardHeader>
                 <CardTitle>Add New Contact</CardTitle>
@@ -600,7 +600,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
             </Card>
           </TabsContent>
 
-          <TabsContent value="import" className="space-y-4">
+          <TabsContent value="import" className="space-y-4 pb-8 m-0">
             <Card>
               <CardHeader>
                 <CardTitle>Import Contacts</CardTitle>
@@ -646,6 +646,7 @@ export function ContactManager({ contactListId, open, onOpenChange }: ContactMan
               </CardContent>
             </Card>
           </TabsContent>
+          </div>
         </Tabs>
       </DialogContent>
     </Dialog>
