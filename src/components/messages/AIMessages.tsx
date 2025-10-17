@@ -90,7 +90,7 @@ const DEFAULT_SETTINGS: GenerationSettings = {
 
 const TONE_OPTIONS = ['Professional', 'Friendly', 'Casual', 'Urgent', 'Formal', 'Conversational'];
 const LANGUAGE_OPTIONS = ['English', 'French', 'Spanish', 'German'];
-const CATEGORY_OPTIONS = ['Promotional', 'Transactional', 'Reminder', 'Welcome', 'Survey', 'Update'];
+const CATEGORY_OPTIONS = ["Notification","Alert",'Promotional', 'Transactional', 'Reminder', 'Welcome', 'Survey', 'Update'];
 
 // MongoDB database operations using your API routes
 const messageDatabase = {
@@ -244,7 +244,8 @@ export function AIMessages() {
         includeEmojis: settings.includeEmojis,
         companyName: settings.companyName,
         unsubscribeText: settings.unsubscribeText,
-        customInstructions: settings.customInstructions
+        customInstructions: settings.customInstructions,
+        category,
       });
   
       setGeneratedVariants(response.data.variants);

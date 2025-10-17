@@ -37,6 +37,7 @@ export interface GenerationRequest {
   companyName: string;
   unsubscribeText?: string;
   customInstructions?: string;
+  category?: string;
 }
 
 export interface GenerateAndSaveRequest extends GenerationRequest {
