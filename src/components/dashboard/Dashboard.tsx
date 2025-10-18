@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { StatsCard } from "./StatsCard";
 import { DeviceStatus } from "./DeviceStatus";
+// In your Dashboard component, add the SIMStatus component
+import { SIMStatus } from "./SIMStatus";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -234,42 +237,6 @@ export function Dashboard() {
         {/* Device Status - Takes 2 columns */}
         <div className="lg:col-span-2 space-y-6">
           <DeviceStatus devices={devices} />
-          
-          {/* Campaign Progress */}
-          {/* <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Campaign Progress
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {stats?.campaignProgress?.slice(0, 4).map((campaign, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium text-sm">{campaign.name}</span>
-                    <Badge variant={
-                      campaign.status === 'active' ? 'default' :
-                      campaign.status === 'paused' ? 'secondary' : 'outline'
-                    }>
-                      {campaign.status}
-                    </Badge>
-                  </div>
-                  <Progress value={campaign.progress} className="h-2" />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{campaign.progress.toFixed(1)}% complete</span>
-                    <span>{campaign.sent?.toLocaleString()} / {campaign.total?.toLocaleString()}</span>
-                  </div>
-                </div>
-              ))}
-              {(!stats?.campaignProgress || stats.campaignProgress.length === 0) && (
-                <div className="text-center py-4 text-muted-foreground">
-                  <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>No active campaigns</p>
-                </div>
-              )}
-            </CardContent>
-          </Card> */}
         </div>
 
         {/* Right Sidebar */}

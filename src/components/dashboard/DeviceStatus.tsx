@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { authFetch } from "@/lib/api";
+import { SIMStatus } from "./SIMStatus";
 
 interface DeviceData {
   _id: string;
@@ -296,6 +297,10 @@ export function DeviceStatus({ devices: propDevices }: DeviceStatusProps) {
             </div>
           </div>
         )}
+      </CardContent>
+      <CardContent className="space-y-4">
+
+      <SIMStatus />
       </CardContent>
     </Card>
   );
