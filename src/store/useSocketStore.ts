@@ -1,4 +1,4 @@
-// store/useSocketStore.ts - Simplified version
+// store/useSocketStore.ts - Complete version
 import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from './useAuthStore';
@@ -17,6 +17,7 @@ interface SocketState {
   connect: () => void;
   disconnect: () => void;
   emitEvent: (event: string, data: any) => void;
+  updateInboxViewStatus: () => void;
 }
 
 export const useSocketStore = create<SocketState>((set, get) => ({
@@ -27,16 +28,10 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
   connect: () => {
     const { user, token } = useAuthStore.getState();
+    const { activeSection } = useNavigationStore.getState();
+    const { currentConversation } = useMessagesStore.getState();
     const { addNotification, fetchNotifications } = useNotificationStore.getState();
     const { navigateToSection } = useNavigationStore.getState();
-
-    const { 
-      messages, 
-      setMessages, 
-      fetchConversations,
-      currentConversation,
-      selectedDevice 
-    } = useMessagesStore.getState();
     
     if (!user || !token) {
       console.warn('No user or token available for socket connection');
@@ -51,12 +46,17 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
     const socket = io(import.meta.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000', {
       auth: {
-        token: token
+        token: token,
+        userId: user._id
       },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      query: {
+        section: activeSection,
+        userId: user._id
+      }
     });
 
     socket.on('connect', () => {
@@ -66,6 +66,13 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       // Join user-specific room only
       socket.emit('join-user-room', user._id);
       console.log(`Joined user room: user:${user._id}`);
+      
+      // Send initial inbox view status
+      const isViewingInbox = activeSection === 'inbox';
+      socket.emit('inbox-view-status', {
+        isViewingInbox,
+        currentConversation: currentConversation || null
+      });
       
       // Fetch initial notifications
       fetchNotifications();
@@ -82,7 +89,6 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     });
 
     // Handle real-time SMS reception
-    // In your useSocketStore.ts - Complete sms-received handler
     socket.on('sms-received', (data: any) => {
       console.log('Received real-time SMS via user room:', data);
       
@@ -94,7 +100,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         selectedDevice,
         conversations,
         setConversations,
-        fetchConversation,
+        setCurrentConversation,
         markAsRead
       } = useMessagesStore.getState();
     
@@ -199,13 +205,14 @@ export const useSocketStore = create<SocketState>((set, get) => ({
             ...currentConversation,
             lastMessage: newMessage.sms,
             lastTimestamp: newMessage.timestamp,
-            // unreadCount: newMessage.direction === 'inbound' && !newMessage.read ? 
-            //   currentConversation.unreadCount + 1 : currentConversation.unreadCount,
-            //messageCount: currentConversation.messageCount + 1,
-            messages: [...currentConversation.messages, newMessage] // Add to end for chronological order
+            messages: [...(currentConversation.messages || []), newMessage] // Add to end for chronological order
           };
-          useMessagesStore.getState().setCurrentConversation(updatedConversation);
-          markAsRead(newMessage.id);
+          setCurrentConversation(updatedConversation);
+          
+          // Mark as read in database
+          if (newMessage.id && !newMessage.isReport) {
+            markAsRead(newMessage.id);
+          }
         }
       } else if (currentConversation) {
         console.log('Message does not belong to current conversation', {
@@ -216,9 +223,12 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         });
       }
     
-      // Get current active section from App state to check if user is on inbox
-      const isUserOnInbox = window.location.pathname.includes('inbox') || 
-                          window.__ACTIVE_SECTION__ === 'inbox';
+      // Update inbox view status after receiving message
+      get().updateInboxViewStatus();
+    
+      // Get current active section
+      const { activeSection } = useNavigationStore.getState();
+      const isUserOnInbox = activeSection === 'inbox';
     
       console.log('User on inbox section:', isUserOnInbox);
     
@@ -226,14 +236,15 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       const isViewingThisConversation = shouldUpdateCurrentConversation;
       
       if (!isUserOnInbox || !isViewingThisConversation) {
+        const messagePreview = data.sms ? decodeBase64(data.sms).substring(0, 50) + (decodeBase64(data.sms).length > 50 ? '...' : '') : 'No content';
+        
         toast.info(`New message from ${data.from}`, {
-          description: data.sms ? decodeBase64(data.sms).substring(0, 50) + (decodeBase64(data.sms).length > 50 ? '...' : '') : 'No content',
+          description: data.isSpamReport ? 'Spam report received' : messagePreview,
           duration: 5000,
           action: {
             label: 'View',
             onClick: () => {
-              // Navigate to inbox or focus the app
-              useNavigationStore.getState().navigateToSection('inbox');
+              navigateToSection('inbox');
             }
           }
         });
@@ -275,7 +286,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       console.log('Received system notification:', data);
       addNotification({
         id: `system-${Date.now()}`,
-        _id: data._id || data.id ,
+        _id: data._id || data.id,
         type: data.type || 'info',
         title: data.title,
         message: data.message,
@@ -291,12 +302,64 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       fetchNotifications();
     });
 
+    // Set up subscription listeners for state changes
+    const unsubscribeNavigation = useNavigationStore.subscribe((state) => {
+      if (socket.connected && state.activeSection !== activeSection) {
+        const newSection = state.activeSection;
+        socket.emit('update-section', newSection);
+        
+        // Update inbox view status when section changes
+        const isViewingInbox = newSection === 'inbox';
+        const { currentConversation } = useMessagesStore.getState();
+        
+        socket.emit('inbox-view-status', {
+          isViewingInbox,
+          currentConversation: isViewingInbox ? currentConversation : null
+        });
+        
+        console.log(`Updated section to: ${newSection}, isViewingInbox: ${isViewingInbox}`);
+      }
+    });
+
+  let previousConversation = null;
+  
+  const unsubscribeMessages = useMessagesStore.subscribe((state) => {
+    if (socket.connected) {
+      const { activeSection } = useNavigationStore.getState();
+      const isViewingInbox = activeSection === 'inbox';
+      
+      // Only emit when currentConversation actually changes
+      if (isViewingInbox && state.currentConversation !== previousConversation) {
+        socket.emit('inbox-view-status', {
+          isViewingInbox: true,
+          currentConversation: state.currentConversation
+        });
+        
+        console.log('Updated current conversation on server:', {
+          phoneNumber: state.currentConversation?.phoneNumber,
+          port: state.currentConversation?.port,
+          slot: state.currentConversation?.slot
+        });
+        
+        previousConversation = state.currentConversation;
+      }
+    }
+  });
+
+    // Store unsubscribe functions for cleanup
+    socket._unsubscribeFunctions = [unsubscribeNavigation, unsubscribeMessages];
+
     set({ socket });
   },
 
   disconnect: () => {
     const { socket } = get();
     if (socket) {
+      // Clean up subscriptions
+      if (socket._unsubscribeFunctions) {
+        socket._unsubscribeFunctions.forEach(unsubscribe => unsubscribe());
+      }
+      
       socket.disconnect();
       set({ socket: null, isConnected: false });
     }
@@ -308,6 +371,26 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       socket.emit(event, data);
     } else {
       console.warn('Socket not connected, cannot emit event:', event);
+    }
+  },
+
+  updateInboxViewStatus: () => {
+    const { socket } = get();
+    if (socket && socket.connected) {
+      const { activeSection } = useNavigationStore.getState();
+      const { currentConversation } = useMessagesStore.getState();
+      
+      const isViewingInbox = activeSection === 'inbox';
+      
+      socket.emit('inbox-view-status', {
+        isViewingInbox,
+        currentConversation: isViewingInbox ? currentConversation : null
+      });
+      
+      console.log('Updated inbox view status:', {
+        isViewingInbox,
+        currentConversation: currentConversation ? `${currentConversation.phoneNumber} (${currentConversation.port}-${currentConversation.slot})` : 'none'
+      });
     }
   }
 }));

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,9 @@ export function Inbox() {
   const [replyText, setReplyText] = useState('');
   const { isAuthenticated } = useAuthStore();
   
+  // Use refs to prevent unnecessary re-renders
+  const selectedDeviceRef = useRef(null);
+  
   // Zustand store
   const {
     messages,
@@ -61,25 +64,31 @@ export function Inbox() {
     setConversationLoading
   } = useMessagesStore();
 
-  // Manual sync handler
-  const handleManualSync = async (): Promise<void> => {
-    if (!selectedDevice) {
+  // Update ref when selectedDevice changes
+  useEffect(() => {
+    selectedDeviceRef.current = selectedDevice;
+  }, [selectedDevice]);
+
+  // Memoized handlers to prevent recreation on every render
+  const handleManualSync = useCallback(async (): Promise<void> => {
+    const currentDevice = selectedDeviceRef.current;
+    if (!currentDevice) {
       toast.error('No device selected');
       return;
     }
-    await syncMessagesFromDevice(selectedDevice._id);
-  };
+    await syncMessagesFromDevice(currentDevice._id);
+  }, [syncMessagesFromDevice]);
 
-  // Conversation reply handler
-  const handleConversationReply = async () => {
-    if (!currentConversation || !replyText.trim() || !selectedDevice) {
+  const handleConversationReply = useCallback(async () => {
+    const currentDevice = selectedDeviceRef.current;
+    if (!currentConversation || !replyText.trim() || !currentDevice) {
       toast.error('Please enter a message to send');
       return;
     }
 
     try {
       await sendSMS({
-        device: selectedDevice,
+        device: currentDevice,
         port: currentConversation.port,
         slot: currentConversation.slot,
         to: currentConversation.phoneNumber,
@@ -91,12 +100,11 @@ export function Inbox() {
     } catch (error) {
       // Error is handled in the store
     }
-  };
+  }, [currentConversation, replyText, sendSMS]);
 
-  console.log("currentConversation",currentConversation)
-
-  const handleConversationClick = async (conversation: any) => {
-    if (!selectedDevice) {
+  const handleConversationClick = useCallback(async (conversation: any) => {
+    const currentDevice = selectedDeviceRef.current;
+    if (!currentDevice) {
       toast.error('No device selected');
       return;
     }
@@ -106,65 +114,42 @@ export function Inbox() {
       conversation.phoneNumber, 
       conversation.port, 
       conversation.slot, 
-      selectedDevice._id
+      currentDevice._id
     );
     
     // Mark THIS conversation as read in frontend state
     if (conversation.unreadCount > 0) {
       markConversationAsRead(conversation.phoneNumber, conversation.port, conversation.slot);
     }
-  };
+  }, [fetchConversation, markConversationAsRead]);
 
-
-  // Message click handler - always opens conversation
-  const handleMessageClick = async (message: ReceivedSMS) => {
-    if (!selectedDevice) return;
+  // Message click handler
+  const handleMessageClick = useCallback(async (message: ReceivedSMS) => {
+    const currentDevice = selectedDeviceRef.current;
+    if (!currentDevice) return;
     
     // Open conversation for this message
     await fetchConversation(
       message.from, 
       message.port, 
       message.slot, 
-      selectedDevice._id
+      currentDevice._id
     );
     
     // Mark as read if it's inbound and unread
     if (!message.read && message.direction === 'inbound') {
       await markAsRead(message.id);
     }
-  };
-
-  // Effects
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchDevices();
-    }
-  }, [isAuthenticated, fetchDevices]);
-
-  useEffect(() => {
-    if (isAuthenticated && selectedDevice) {
-      loadMessages();
-    }
-  }, [isAuthenticated, selectedDevice, loadMessages]);
-
-  useEffect(() => {
-    filterMessages(activeTab);
-  }, [messages, filters, activeTab, filterMessages]);
-
-  useEffect(() => {
-    if (isAuthenticated && selectedDevice && messages.length > 0) {
-      fetchConversations(selectedDevice._id);
-    }
-  }, [isAuthenticated, selectedDevice, messages, fetchConversations]);
+  }, [fetchConversation, markAsRead]);
 
   // UI Helper Functions
-  const getDirectionIcon = (direction: string) => {
+  const getDirectionIcon = useCallback((direction: string) => {
     return direction === 'inbound' ? 
       <MailPlus className="h-4 w-4 text-green-600" /> : 
       <Send className="h-4 w-4 text-blue-600" />;
-  };
+  }, []);
 
-  const formatDate = (timestamp: string): string => {
+  const formatDate = useCallback((timestamp: string): string => {
     const date = new Date(timestamp);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -177,15 +162,49 @@ export function Inbox() {
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
     return date.toLocaleDateString();
-  };
+  }, []);
 
-  const formatTime = (timestamp: string): string => {
+  const formatTime = useCallback((timestamp: string): string => {
     return new Date(timestamp).toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit'
     });
-  };
+  }, []);
 
+  // Effects with proper dependencies
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchDevices();
+    }
+  }, [isAuthenticated, fetchDevices]);
+
+  useEffect(() => {
+    if (isAuthenticated && selectedDevice) {
+      loadMessages();
+    }
+  }, [isAuthenticated, selectedDevice, loadMessages]);
+
+  // Filter messages only when dependencies change
+  useEffect(() => {
+    filterMessages(activeTab);
+  }, [messages, filters, activeTab, filterMessages]);
+
+  const hasFetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isAuthenticated || !selectedDevice) return;
+    if (messages.length === 0) return;
+    if (hasFetchedRef.current) return;
+  
+    hasFetchedRef.current = true;
+    fetchConversations(selectedDevice._id);
+  }, [isAuthenticated, selectedDevice?._id, messages.length, fetchConversations]);
+  
+  // reset when device changes so you can fetch for the new device
+  useEffect(() => {
+    hasFetchedRef.current = false;
+  }, [selectedDevice?._id]);
+  
   if (!isAuthenticated) {
     return (
       <div className="flex-1 flex items-center justify-center p-6">
@@ -432,11 +451,7 @@ export function Inbox() {
                         currentConversation?.slot === conversation.slot ? 
                         'bg-muted border-l-4 border-l-primary' : ''
                       } ${conversation.unreadCount > 0 ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
-                      onClick={() => {
-                        handleConversationClick(conversation)
-                        console.log("conversation",conversation)
-                        //handleMessageClick(conversation.messages[conversation.messages.length - 1])
-                      }}
+                      onClick={() => handleConversationClick(conversation)}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -467,7 +482,7 @@ export function Inbox() {
                         <div>
                         <span>Port {conversation.port}-{conversation.slot}</span>
                         </div>
-                        {conversation?.isReport || conversation.contact?.isReport && <PhoneOffIcon className="h-3 w-3" color="red" />}
+                        {conversation?.isReport && <PhoneOffIcon className="h-3 w-3" color="red" />}
                       </div>
                     </div>
                   ))
@@ -518,9 +533,8 @@ export function Inbox() {
 
               <CardContent className="flex-1 flex flex-col p-0">
                 {/* Conversation Messages */}
-                {/* Conversation Messages */}
                 <div className="flex-1 p-4 space-y-4 overflow-y-auto max-h-[500px]">
-                  {currentConversation.messages.length === 0 ? (
+                  {!currentConversation.messages || currentConversation.messages.length === 0 ? (
                     <div className="text-center text-muted-foreground py-8">
                       <MessageSquare className="h-12 w-12 mx-auto mb-2" />
                       <p>No messages in this conversation</p>
@@ -569,7 +583,7 @@ export function Inbox() {
                 <div className="border-t p-4 bg-muted/20">
                   <div className="space-y-3">
                     <Label htmlFor="conversation-reply" className="text-sm font-medium">
-                      Reply to {currentConversation.phoneNumber} {currentConversation?.contact?.isReport ? '(Report)' : ''}
+                      Reply to {currentConversation.phoneNumber} {currentConversation?.isReport ? '(Report)' : ''}
                     </Label>
                     <div className="flex gap-2">
                       <Textarea
@@ -617,29 +631,28 @@ export function Inbox() {
             </Card>
           ) : (
             <Card className="h-full flex items-center justify-center">
-             <CardContent className="p-8 flex flex-col items-center justify-center text-center">
-  <MessageSquare className="h-16 w-16 mb-4 text-muted-foreground" />
-  <h3 className="text-lg font-semibold mb-2">Select a Conversation</h3>
-  <p className="text-muted-foreground mb-4">
-    Choose a conversation from the list to start messaging
-  </p>
-  {messages.length === 0 && selectedDevice && (
-    <Button 
-      variant="outline" 
-      onClick={handleManualSync} 
-      disabled={isSyncing}
-      className="flex items-center gap-2"
-    >
-      {isSyncing ? (
-        <RefreshCw className="h-4 w-4 animate-spin" />
-      ) : (
-        <FolderSync className="h-4 w-4" />
-      )}
-      {isSyncing ? 'Syncing...' : 'Sync Messages from Device'}
-    </Button>
-  )}
-</CardContent>
-
+              <CardContent className="p-8 flex flex-col items-center justify-center text-center">
+                <MessageSquare className="h-16 w-16 mb-4 text-muted-foreground" />
+                <h3 className="text-lg font-semibold mb-2">Select a Conversation</h3>
+                <p className="text-muted-foreground mb-4">
+                  Choose a conversation from the list to start messaging
+                </p>
+                {messages.length === 0 && selectedDevice && (
+                  <Button 
+                    variant="outline" 
+                    onClick={handleManualSync} 
+                    disabled={isSyncing}
+                    className="flex items-center gap-2"
+                  >
+                    {isSyncing ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FolderSync className="h-4 w-4" />
+                    )}
+                    {isSyncing ? 'Syncing...' : 'Sync Messages from Device'}
+                  </Button>
+                )}
+              </CardContent>
             </Card>
           )}
         </div>
