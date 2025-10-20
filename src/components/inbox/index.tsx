@@ -78,27 +78,30 @@ export function Inbox() {
     }
     await syncMessagesFromDevice(currentDevice._id);
   }, [syncMessagesFromDevice]);
-
+  console.log("currentConversation",currentConversation)
   const handleConversationReply = useCallback(async () => {
     const currentDevice = selectedDeviceRef.current;
     if (!currentConversation || !replyText.trim() || !currentDevice) {
       toast.error('Please enter a message to send');
       return;
     }
-
+  
     try {
       await sendSMS({
         device: currentDevice,
         port: currentConversation.port,
         slot: currentConversation.slot,
         to: currentConversation.phoneNumber,
-        sms: replyText.trim()
+        sms: replyText.trim(),
+        contact: currentConversation?.contact
       });
       
       setReplyText('');
-      toast.success('Message sent successfully');
+      // The state is now updated within sendSMS, no need for additional updates
+      
     } catch (error) {
       // Error is handled in the store
+      console.error('Failed to send message:', error);
     }
   }, [currentConversation, replyText, sendSMS]);
 
@@ -108,9 +111,11 @@ export function Inbox() {
       toast.error('No device selected');
       return;
     }
-    
+    console.log("conversation",conversation)
     // Fetch the conversation first
     await fetchConversation(
+      conversation.simId, 
+      conversation.contact?._id, 
       conversation.phoneNumber, 
       conversation.port, 
       conversation.slot, 
@@ -123,31 +128,7 @@ export function Inbox() {
     }
   }, [fetchConversation, markConversationAsRead]);
 
-  // Message click handler
-  const handleMessageClick = useCallback(async (message: ReceivedSMS) => {
-    const currentDevice = selectedDeviceRef.current;
-    if (!currentDevice) return;
-    
-    // Open conversation for this message
-    await fetchConversation(
-      message.from, 
-      message.port, 
-      message.slot, 
-      currentDevice._id
-    );
-    
-    // Mark as read if it's inbound and unread
-    if (!message.read && message.direction === 'inbound') {
-      await markAsRead(message.id);
-    }
-  }, [fetchConversation, markAsRead]);
 
-  // UI Helper Functions
-  const getDirectionIcon = useCallback((direction: string) => {
-    return direction === 'inbound' ? 
-      <MailPlus className="h-4 w-4 text-green-600" /> : 
-      <Send className="h-4 w-4 text-blue-600" />;
-  }, []);
 
   const formatDate = useCallback((timestamp: string): string => {
     const date = new Date(timestamp);

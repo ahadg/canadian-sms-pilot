@@ -37,6 +37,7 @@ interface Conversation {
   contact?: {
     isReport: boolean;
   };
+  sim?: any
 }
 
 export interface InboxFilters {
@@ -76,7 +77,7 @@ interface MessagesState {
   setCurrentConversation: (conversation: Conversation | null) => void;
   sendSMS: (params: SendSMSParams) => Promise<void>;
   fetchConversations: (deviceId: string) => Promise<void>;
-  fetchConversation: (phoneNumber: string, port: number, slot: number, deviceId: string) => Promise<void>;
+  fetchConversation: (simId,contactId,phoneNumber: string, port: number, slot: number, deviceId: string) => Promise<void>;
   
   // Async Actions
   fetchDevices: () => Promise<void>;
@@ -96,6 +97,7 @@ interface SendSMSParams {
   slot: number;
   to: string;
   sms: string;
+  contact?: any
 }
 
 const initialFilters: InboxFilters = {
@@ -160,13 +162,13 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
-  fetchConversation: async (phoneNumber: string, port: number, slot: number, deviceId: string) => {
+  fetchConversation: async (simId : string,contactId : string,phoneNumber: string, port: number, slot: number, deviceId: string) => {
     const { setConversationLoading, setCurrentConversation } = get();
     
     setConversationLoading(true);
     try {
       const response = await authFetch(
-        `/api/sms/conversation?phoneNumber=${phoneNumber}&port=${port}&slot=${slot}&deviceId=${deviceId}`
+        `/api/sms/conversation?simId=${simId}&contactId=${contactId}&phoneNumber=${phoneNumber}&port=${port}&slot=${slot}&deviceId=${deviceId}`
       );
       
       console.log("fetchConversation response:", response);
@@ -192,9 +194,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         unreadCount: sortedMessages.filter((msg: ReceivedSMS) => !msg.read && msg.direction === 'inbound').length,
         messageCount: sortedMessages.length,
         messages: sortedMessages,
-        contact: response.data.contact || { isReport: false },
+        contact: response.contact || { isReport: false },
         simId: `${port}-${slot}`,
-        isReport: response.data.contact?.isReport || false
+        isReport: response.data.contact?.isReport || false,
+        sim : response.data.sim
       };
   
       console.log("Processed conversation:", conversation);
@@ -210,17 +213,19 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   sendSMS: async (params: SendSMSParams) => {
-    const { device, port, slot, to, sms } = params;
-    const tasks = [{
-      id: Number(`${Date.now()}${Math.floor(Math.random() * 1000)}`), 
-      from: port, 
-      recipients: [to], 
-      sms
-    }];
+    const { device, port, slot, to, sms, contact } = params;
+    const { currentConversation, conversations, setMessages, setConversations, setCurrentConversation } = get();
     
     set({ isLoading: true });
     try {
       // Step 1: Send SMS via device using EjoinAPI
+      const tasks = [{
+        id: Number(`${Date.now()}${Math.floor(Math.random() * 1000)}`), 
+        from: port, 
+        recipients: [to], 
+        sms
+      }];
+      
       const ejoinResponse = await EjoinAPI.submitSmsTasks(device, tasks);
   
       if (ejoinResponse?.[0]?.reason !== "OK") {
@@ -238,30 +243,73 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           port,
           slot,
           to,
-          sms
+          sms,
+          contactId: contact?._id
         })
       });
   
-      if (!saveResponse.success) {
+      // Parse the response properly
+      const result = saveResponse;
+      
+      if (!result.success) {
         throw new Error('Failed to save SMS to database');
       }
   
-      toast.success('SMS sent successfully');
-      
-      // Refresh conversations and current conversation
-      const { selectedDevice, fetchConversations, currentConversation, fetchConversation } = get();
-      if (selectedDevice) {
-        await fetchConversations(selectedDevice._id);
+      // Create the new message object
+      const newMessage: ReceivedSMS = {
+        id: result.data?.id || `temp-${Date.now()}`,
+        port,
+        slot,
+        timestamp: new Date().toISOString(),
+        from: `${port}`, // This should be the sender number, adjust as needed
+        to,
+        sms,
+        status: 'delivered',
+        direction: 'outbound',
+        read: true,
+        isReport: false
+      };
+  
+      // Update messages state
+      set((state) => ({
+        messages: [...state.messages, newMessage]
+      }));
+  
+      // Update conversations if we have a current conversation
+      if (currentConversation && 
+          currentConversation.phoneNumber === to && 
+          currentConversation.port === port && 
+          currentConversation.slot === slot) {
         
-        // Refresh current conversation if it's the same recipient
-        if (currentConversation && currentConversation.phoneNumber === to) {
-          await fetchConversation(to, port, slot, selectedDevice._id);
-        }
+        const updatedConversation: Conversation = {
+          ...currentConversation,
+          lastMessage: sms,
+          lastTimestamp: newMessage.timestamp,
+          messageCount: currentConversation.messageCount + 1,
+          messages: [...(currentConversation.messages || []), newMessage]
+        };
+  
+        setCurrentConversation(updatedConversation);
+  
+        // Update conversations list
+        const updatedConversations = conversations.map(conv =>
+          conv.phoneNumber === to && conv.port === port && conv.slot === slot
+            ? updatedConversation
+            : conv
+        );
+        
+        setConversations(updatedConversations);
+      } else {
+        // If no current conversation matches, refresh conversations
+        await get().fetchConversations(device._id);
       }
+  
+      toast.success('Message sent successfully');
+      return newMessage;
       
     } catch (error) {
       console.error('Failed to send SMS:', error);
-      toast.error('Failed to send SMS');
+      toast.error('Failed to send SMS: ' + (error.message || 'Unknown error'));
       throw error;
     } finally {
       set({ isLoading: false });
