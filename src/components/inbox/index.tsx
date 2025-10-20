@@ -56,7 +56,9 @@ export function Inbox() {
     sendSMS,
     fetchConversations,
     fetchConversation,
-    markConversationAsRead
+    markConversationAsRead,
+    isConversationLoading, 
+    setConversationLoading
   } = useMessagesStore();
 
   // Manual sync handler
@@ -477,7 +479,18 @@ export function Inbox() {
 
         {/* Conversation View */}
         <div className="lg:col-span-2">
-          {currentConversation ? (
+          {isConversationLoading ? (
+            // Loader when switching conversations
+            <Card className="h-full flex items-center justify-center">
+              <CardContent className="p-8 flex flex-col items-center justify-center text-center">
+                <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Loading Conversation</h3>
+                <p className="text-muted-foreground">
+                  Loading messages...
+                </p>
+              </CardContent>
+            </Card>
+          ) : currentConversation ? (
             <Card className="h-full flex flex-col">
               <CardHeader className="pb-4 border-b">
                 <div className="flex items-center justify-between">

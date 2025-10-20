@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-const API_BASE_URL = import.meta.env.NEXT_PUBLIC_API_BASE_URL || 'http://212.56.32.203:3000';
+const API_BASE_URL = import.meta.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
 
 export const useAuthStore = create(
   persist(

@@ -135,18 +135,5 @@ export const messageAPI = {
       method: 'POST',
       data: JSON.stringify(data)
     });
-  },
-
-  // Generate variants and save message in one operation
-  generateAndSave: async (data: GenerateAndSaveRequest) => {
-    return authFetch<{ 
-      data: { 
-        message: SavedMessage,
-        variants: MessageVariant[]
-      } 
-    }>('/api/messages/ai/generate-and-save', {
-      method: 'POST',
-      data: JSON.stringify(data)
-    });
   }
 };

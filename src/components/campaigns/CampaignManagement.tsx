@@ -117,12 +117,18 @@ export function CampaignManagement() {
     contactLists,
     refreshContactLists
   } = useContactStore();
+  
   console.log("contactLists",contactLists)
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
-    // Load contact lists when component mounts
-    useEffect(() => {
-      refreshContactLists();
-    }, []); // Empty dependency array to run only once
+  
+  // Loading states for campaign actions
+  const [loadingActions, setLoadingActions] = useState<{[key: string]: 'starting' | 'pausing' | 'resuming' | 'stopping' | null}>({});
+  
+  // Load contact lists when component mounts
+  useEffect(() => {
+    refreshContactLists();
+  }, []); // Empty dependency array to run only once
+  
   // Use Zustand socket store
   const { 
     isConnected, 
@@ -449,8 +455,9 @@ export function CampaignManagement() {
     setIsCreatingCampaign(false); // Start loading
   };
 
-  // Handle campaign actions (keep existing functions)
+  // Handle campaign actions with loading states
   const handleStartCampaign = async (campaignId: string) => {
+    setLoadingActions(prev => ({ ...prev, [campaignId]: 'starting' }));
     try {
       await startCampaignProcessing(campaignId);
       await updateCampaignStatus(campaignId, 'active');
@@ -458,10 +465,13 @@ export function CampaignManagement() {
     } catch (error) {
       console.error('Error starting campaign:', error);
       toast.error('Failed to start campaign');
+    } finally {
+      setLoadingActions(prev => ({ ...prev, [campaignId]: null }));
     }
   };
 
   const handlePauseCampaign = async (campaignId: string) => {
+    setLoadingActions(prev => ({ ...prev, [campaignId]: 'pausing' }));
     try {
       await pauseCampaign(campaignId);
       await updateCampaignStatus(campaignId, 'paused');
@@ -469,10 +479,13 @@ export function CampaignManagement() {
     } catch (error) {
       console.error('Error pausing campaign:', error);
       toast.error('Failed to pause campaign');
+    } finally {
+      setLoadingActions(prev => ({ ...prev, [campaignId]: null }));
     }
   };
 
   const handleResumeCampaign = async (campaignId: string) => {
+    setLoadingActions(prev => ({ ...prev, [campaignId]: 'resuming' }));
     try {
       await resumeCampaign(campaignId);
       await updateCampaignStatus(campaignId, 'active');
@@ -480,10 +493,13 @@ export function CampaignManagement() {
     } catch (error) {
       console.error('Error resuming campaign:', error);
       toast.error('Failed to resume campaign');
+    } finally {
+      setLoadingActions(prev => ({ ...prev, [campaignId]: null }));
     }
   };
 
   const handleStopCampaign = async (campaignId: string) => {
+    setLoadingActions(prev => ({ ...prev, [campaignId]: 'stopping' }));
     try {
       await stopCampaign(campaignId);
       await updateCampaignStatus(campaignId, 'completed');
@@ -491,6 +507,8 @@ export function CampaignManagement() {
     } catch (error) {
       console.error('Error stopping campaign:', error);
       toast.error('Failed to stop campaign');
+    } finally {
+      setLoadingActions(prev => ({ ...prev, [campaignId]: null }));
     }
   };
 
@@ -525,7 +543,6 @@ export function CampaignManagement() {
     if (!campaign?.totalContacts || campaign.totalContacts === 0) return 0;
     return (campaign.sentMessages / campaign.totalContacts) * 100;
   };
-
 
   // Get character count and SMS segments
   const getMessageStats = (message: string) => {
@@ -1202,6 +1219,7 @@ export function CampaignManagement() {
                         const assignedDevice = campaign.device as any
                         const progress = getCampaignProgress(campaign);
                         const deliveryRate = getDeliveryRate(campaign);
+                        const campaignLoading = loadingActions[campaign._id];
                         
                         return (
                           <TableRow key={campaign._id}>
@@ -1284,10 +1302,14 @@ export function CampaignManagement() {
                                     size="sm"
                                     variant="outline"
                                     onClick={() => handleStartCampaign(campaign._id)}
-                                    disabled={!isConnected}
+                                    disabled={!isConnected || !!campaignLoading}
                                   >
-                                    <Play className="h-3 w-3 mr-1" />
-                                    Start
+                                    {campaignLoading === 'starting' ? (
+                                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                    ) : (
+                                      <Play className="h-3 w-3 mr-1" />
+                                    )}
+                                    {campaignLoading === 'starting' ? 'Starting...' : 'Start'}
                                   </Button>
                                 )}
                                 {campaign.status === 'active' && (
@@ -1296,18 +1318,27 @@ export function CampaignManagement() {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handlePauseCampaign(campaign._id)}
-                                      disabled={!isConnected}
+                                      disabled={!isConnected || !!campaignLoading}
                                     >
-                                      <Pause className="h-3 w-3 mr-1" />
-                                      Pause
+                                      {campaignLoading === 'pausing' ? (
+                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                      ) : (
+                                        <Pause className="h-3 w-3 mr-1" />
+                                      )}
+                                      {campaignLoading === 'pausing' ? 'Pausing...' : 'Pause'}
                                     </Button>
                                     <Button
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handleStopCampaign(campaign._id)}
+                                      disabled={!!campaignLoading}
                                     >
-                                      <StopCircle className="h-3 w-3 mr-1" />
-                                      Stop
+                                      {campaignLoading === 'stopping' ? (
+                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                      ) : (
+                                        <StopCircle className="h-3 w-3 mr-1" />
+                                      )}
+                                      {campaignLoading === 'stopping' ? 'Stopping...' : 'Stop'}
                                     </Button>
                                   </>
                                 )}
@@ -1317,18 +1348,27 @@ export function CampaignManagement() {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handleResumeCampaign(campaign._id)}
-                                      disabled={!isConnected}
+                                      disabled={!isConnected || !!campaignLoading}
                                     >
-                                      <CirclePlay className="h-3 w-3 mr-1" />
-                                      Resume
+                                      {campaignLoading === 'resuming' ? (
+                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                      ) : (
+                                        <CirclePlay className="h-3 w-3 mr-1" />
+                                      )}
+                                      {campaignLoading === 'resuming' ? 'Resuming...' : 'Resume'}
                                     </Button>
                                     <Button
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handleStopCampaign(campaign._id)}
+                                      disabled={!!campaignLoading}
                                     >
-                                      <StopCircle className="h-3 w-3 mr-1" />
-                                      Stop
+                                      {campaignLoading === 'stopping' ? (
+                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                      ) : (
+                                        <StopCircle className="h-3 w-3 mr-1" />
+                                      )}
+                                      {campaignLoading === 'stopping' ? 'Stopping...' : 'Stop'}
                                     </Button>
                                   </>
                                 )}
@@ -1337,6 +1377,7 @@ export function CampaignManagement() {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => handleViewCampaign(campaign)}
+                                  disabled={!!campaignLoading}
                                 >
                                   <Eye className="h-3 w-3" />
                                 </Button>

@@ -33,6 +33,7 @@ interface Conversation {
   unreadCount: number;
   messageCount: number;
   simId: string;
+  isReport : Boolean;
 }
 
 export interface InboxFilters {
@@ -55,7 +56,9 @@ interface MessagesState {
   selectedDevice: Device | null;
   conversations: Conversation[];
   currentConversation: Conversation | null;
+  isConversationLoading: boolean;
   // Actions
+  setConversationLoading: (loading: boolean) => void;
   setMessages: (messages: ReceivedSMS[]) => void;
   setFilteredMessages: (messages: ReceivedSMS[]) => void;
   setSelectedMessage: (message: ReceivedSMS | null) => void;
@@ -126,8 +129,9 @@ export const useMessagesStore = create<MessagesState>()(
       selectedDevice: null,
       conversations: [],
       currentConversation: null,
-
+      isConversationLoading: false,
       // Sync State Actions
+      setConversationLoading: (isConversationLoading) => set({ isConversationLoading }),
       setMessages: (messages) => set({ messages }),
       setFilteredMessages: (filteredMessages) => set({ filteredMessages }),
       setSelectedMessage: (selectedMessage) => set({ selectedMessage }),
@@ -166,6 +170,9 @@ export const useMessagesStore = create<MessagesState>()(
       },
 
       fetchConversation: async (phoneNumber: string, port: number, slot: number, deviceId: string) => {
+        const { setConversationLoading, setCurrentConversation } = get();
+        
+        setConversationLoading(true);
         try {
           const response = await authFetch(
             `/api/sms/conversation?phoneNumber=${phoneNumber}&port=${port}&slot=${slot}&deviceId=${deviceId}`
@@ -198,11 +205,14 @@ export const useMessagesStore = create<MessagesState>()(
           };
       
           console.log("Processed conversation:", conversation);
-          set({ currentConversation: conversation });
+          setCurrentConversation(conversation);
           
         } catch (error) {
           console.error('Failed to fetch conversation:', error);
           toast.error('Failed to load conversation');
+          setCurrentConversation(null);
+        } finally {
+          setConversationLoading(false);
         }
       },
 
