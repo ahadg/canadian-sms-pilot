@@ -39,13 +39,15 @@ import {
   MessageSquare,
   History,
   X,
+  IdCard,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { EjoinAPIService } from "../../lib/api/devices";
+import { authFetch } from "@/lib/api";
 
 interface Device {
-  _id : string;
+  _id: string;
   id: string;
   name: string;
   port: number;
@@ -68,20 +70,26 @@ interface Device {
 }
 
 interface SIMCard {
+  _id?: string;
   slotId: number;
   imei: string;
   carrier: string;
   status: "active" | "inactive" | "error";
   signalStrength: number;
+  operator: string;
   dailySent: number;
   dailyLimit: number;
+  todaySent: number;
+  lastResetDate: string;
   lastActivity: string;
   port: string;
   iccid: string;
   imsi: string;
   balance: string;
   inserted: boolean;
+  phoneNumber?: string;
   ussdHistory?: USSDCommand[];
+  device: Device;
 }
 
 interface USSDCommand {
@@ -97,10 +105,12 @@ export function DeviceManagement() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [simCards, setSimCards] = useState<SIMCard[]>([]);
+  const [allSims, setAllSims] = useState<SIMCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
-  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
+  const [simLimitsDialogOpen, setSimLimitsDialogOpen] = useState(false);
+  const [editingSim, setEditingSim] = useState<SIMCard | null>(null);
   const [dailyLimit, setDailyLimit] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [newDevice, setNewDevice] = useState({
@@ -114,9 +124,8 @@ export function DeviceManagement() {
   const [ussdCommand, setUssdCommand] = useState("");
   const [sendingUssd, setSendingUssd] = useState<string | null>(null);
   const [ussdHistory, setUssdHistory] = useState<any>([]);
-  console.log("ussdHistory",ussdHistory)
-  const [selectedSimForHistory, setSelectedSimForHistory] = useState<{ deviceId: string, port: number } | null>(null);
-  const [selectedSimForCommand, setSelectedSimForCommand] = useState<{ device: Device, port: number } | null>(null);
+  const [selectedSimForHistory, setSelectedSimForHistory] = useState<{ deviceId: string; port: number } | null>(null);
+  const [selectedSimForCommand, setSelectedSimForCommand] = useState<{ device: Device; port: number } | null>(null);
   const [quickCommands, setQuickCommands] = useState([
     { name: "Balance", command: "*102#" },
     { name: "Data Balance", command: "*101#" },
@@ -126,6 +135,7 @@ export function DeviceManagement() {
 
   useEffect(() => {
     loadDevices();
+    loadAllSims();
   }, []);
 
   useEffect(() => {
@@ -139,7 +149,7 @@ export function DeviceManagement() {
     try {
       const data = await EjoinAPIService.getDevices();
       console.log("loadDevices_data", data);
-      setDevices(data || []);
+      setDevices(data || [] as any);
       
       // Auto-select first device if none selected
       if (data && data.length > 0 && !selectedDevice) {
@@ -153,34 +163,98 @@ export function DeviceManagement() {
     }
   };
 
-  const handleSaveSettings = async () => {
-    if (!editingDevice) return;
-  
-    setIsSaving(true);
+  const loadAllSims = async () => {
     try {
-      const result = await EjoinAPIService.updateDeviceSettings(editingDevice._id, {
-        dailyLimit: dailyLimit
-      });
-  
-      if (result.success && result.device) {
-        // Update the device in local state
-        setDevices(prev => prev.map(d => 
-          d._id === editingDevice._id ? { ...d, dailyLimit: dailyLimit } : d
-        ));
-        
-        // If the edited device is currently selected, update it too
-        if (selectedDevice?._id === editingDevice._id) {
-          setSelectedDevice(prev => prev ? { ...prev, dailyLimit: dailyLimit } : null);
-        }
-        
-        toast.success('Settings updated successfully');
-        setSettingsDialogOpen(false);
-      } else {
-        toast.error(result.message || 'Failed to update settings');
+      const response = await authFetch('/api/sims');
+      console.log("response",response)
+      if (response) {
+        setAllSims(response.sims || []);
       }
     } catch (error) {
-      console.error('Error saving settings:', error);
-      toast.error('Failed to update settings');
+      console.error('Error loading all SIMs:', error);
+      toast.error('Failed to load SIM cards');
+    }
+  };
+
+  const handleSaveSimLimit = async () => {
+    if (!editingSim) return;
+
+    setIsSaving(true);
+    try {
+      const result = await authFetch(`/api/sims/${editingSim._id}/limit`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        data: JSON.stringify({
+          dailyLimit: dailyLimit
+        })
+      });
+
+      if (result) {
+       // const updatedSim = await result.json();
+        
+        // Update in allSims
+        setAllSims(prev => prev.map(sim => 
+          sim._id === editingSim._id ? { ...sim, dailyLimit: dailyLimit } : sim
+        ));
+        
+        // Update in current device SIMs if applicable
+        setSimCards(prev => prev.map(sim => 
+          sim._id === editingSim._id ? { ...sim, dailyLimit: dailyLimit } : sim
+        ));
+        
+        toast.success('SIM limit updated successfully');
+        setSettingsDialogOpen(false);
+      } else {
+        const error = await result.json();
+        toast.error(error.message || 'Failed to update SIM limit');
+      }
+    } catch (error) {
+      console.error('Error saving SIM limit:', error);
+      toast.error('Failed to update SIM limit');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveBulkSimLimits = async (sims: SIMCard[], limit: number) => {
+    setIsSaving(true);
+    try {
+      const result = await authFetch('/api/sims/bulk-limits', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        data: JSON.stringify({
+          simIds: sims.map(sim => sim._id),
+          dailyLimit: limit
+        })
+      });
+
+      if (result) {
+        const updatedSims = result
+        
+        // Update all SIMs
+        setAllSims(prev => prev.map(sim => {
+          const updatedSim = updatedSims.sims.find((us: SIMCard) => us._id === sim._id);
+          return updatedSim ? updatedSim : sim;
+        }));
+        
+        // Update current device SIMs
+        setSimCards(prev => prev.map(sim => {
+          const updatedSim = updatedSims.sims.find((us: SIMCard) => us._id === sim._id);
+          return updatedSim ? updatedSim : sim;
+        }));
+        
+        toast.success(`Updated limits for ${sims.length} SIM cards`);
+      } else {
+        const error = await result.json();
+        toast.error(error.message || 'Failed to update SIM limits');
+      }
+    } catch (error) {
+      console.error('Error saving bulk SIM limits:', error);
+      toast.error('Failed to update SIM limits');
     } finally {
       setIsSaving(false);
     }
@@ -218,7 +292,7 @@ export function DeviceManagement() {
     try {
       setSimCards([]); // Clear existing data
       const sims = await EjoinAPIService.getSIMCards(device);
-      setSimCards(sims);
+      setSimCards(sims as any);
       console.log(`Loaded ${sims.length} SIM cards for device ${device.name}`);
     } catch (error) {
       console.error('Error loading SIM cards:', error);
@@ -255,6 +329,8 @@ export function DeviceManagement() {
         // Add to state
         setDevices((prev: any) => [result.device, ...prev]);
 
+        setSelectedDevice(result.device as any)
+
         // Reset form
         setNewDevice({
           name: "",
@@ -285,8 +361,8 @@ export function DeviceManagement() {
     setSendingUssd(key);
 
     try {
-      const result = await EjoinAPIService.sendUSSDCommand(device?._id, [{ports : [port], ussd: command, timeout: 60}]);
-      console.log("handleSendUSSD_result",result)
+      const result = await EjoinAPIService.sendUSSDCommand(device?._id, [{ports: [port], ussd: command, timeout: 60}]);
+      console.log("handleSendUSSD_result", result);
       if (result.success) {
         toast.success(`USSD command executed successfully`);
         // Refresh USSD history for this SIM
@@ -311,7 +387,7 @@ export function DeviceManagement() {
   const loadUSSDHistory = async (deviceId: string, port: number) => {
     try {
       const history = await EjoinAPIService.getUSSDHistory(deviceId, port);
-      console.log("history",history)
+      console.log("history", history);
       const key = `${deviceId}-${port}`;
       setUssdHistory(history?.response.ussdCommands);
     } catch (error) {
@@ -410,6 +486,16 @@ export function DeviceManagement() {
             )}
             Refresh All
           </Button>
+          
+          {/* SIM Limits Button */}
+          <Button 
+            variant="outline" 
+            onClick={() => setSimLimitsDialogOpen(true)}
+          >
+            <IdCard className="h-4 w-4 mr-2" />
+            SIM Limits
+          </Button>
+          
           <Dialog>
             <DialogTrigger asChild>
               <Button className="bg-blue-600 text-white hover:bg-blue-700">
@@ -490,7 +576,6 @@ export function DeviceManagement() {
         </div>
       </div>
 
-    
       {/* Device Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {devices.map((device) => (
@@ -550,10 +635,6 @@ export function DeviceManagement() {
                   value={device.totalSlots > 0 ? (device.activeSlots / device.totalSlots) * 100 : 0}
                   className="h-2"
                 />
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Daily Limit</span>
-                  <span className="font-semibold text-green-600">{device.dailyLimit || 100}</span>
-                </div>
               </div>
 
               <div className="flex gap-2 pt-2">
@@ -561,15 +642,14 @@ export function DeviceManagement() {
                   variant="outline" 
                   size="sm" 
                   className="flex-1"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingDevice(device);
-                    setDailyLimit(device.dailyLimit || 100); // Default to 100 if not set
-                    setSettingsDialogOpen(true);
-                  }}
+                  // onClick={(e) => {
+                  //   e.stopPropagation();
+                  //   setSelectedDevice(device);
+                  // }}
+                  onClick={() => setSimLimitsDialogOpen(true)}
                 >
-                  <Settings className="h-4 w-4 mr-2" />
-                  Settings
+                  <IdCard className="h-4 w-4 mr-2" />
+                  SIM Limits
                 </Button>
                 <Button 
                   variant="outline" 
@@ -685,14 +765,16 @@ export function DeviceManagement() {
                 <CreditCard className="h-5 w-5" />
                 SIM Card Management - {selectedDevice.name}
               </CardTitle>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => loadDeviceSIMs(selectedDevice)}
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh SIMs
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => loadDeviceSIMs(selectedDevice)}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh SIMs
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -803,6 +885,197 @@ export function DeviceManagement() {
         </Card>
       )}
 
+      {/* SIM Limits Dialog */}
+      <Dialog open={simLimitsDialogOpen} onOpenChange={setSimLimitsDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <IdCard className="h-5 w-5" />
+              SIM Card Limits Management
+            </DialogTitle>
+            <DialogDescription>
+              Set daily SMS limits for all SIM cards across your devices
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* Bulk Actions */}
+            <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="flex-1">
+                <Label htmlFor="bulkLimit">Set Limit for All Active SIMs</Label>
+                <div className="flex gap-2 mt-1">
+                  <Input
+                    id="bulkLimit"
+                    type="number"
+                    placeholder="Enter daily limit"
+                    className="flex-1"
+                    defaultValue={300}
+                  />
+                  <Button
+                    onClick={() => {
+                      const input = document.getElementById('bulkLimit') as HTMLInputElement;
+                      const limit = parseInt(input.value) || 100;
+                      const activeSims = allSims.filter(sim => sim.inserted && sim.status === 'active');
+                      handleSaveBulkSimLimits(activeSims, limit);
+                    }}
+                  >
+                    Apply to All Active
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* SIMs Table */}
+            <div className="border rounded-lg">
+              <div className="max-h-96 overflow-y-auto">
+                <Table>
+                  <TableHeader className="bg-gray-50 sticky top-0">
+                    <TableRow>
+                      <TableHead>Device</TableHead>
+                      <TableHead>Port</TableHead>
+                      <TableHead>Phone Number</TableHead>
+                      <TableHead>Carrier</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Today's Usage</TableHead>
+                      <TableHead>Daily Limit</TableHead>
+                      <TableHead>Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allSims.map((sim) => {
+                      console.log("sim_devices",devices)
+                      console.log("sim",sim)
+                      const device = devices.find(d => d._id === sim.device?._id);
+                      const usagePercentage = sim.dailyLimit > 0 ? (sim.todaySent / sim.dailyLimit) * 100 : 0;
+                      
+                      return (
+                        <TableRow key={sim._id}>
+                          <TableCell className="font-medium">
+                            {device?.name || 'Unknown Device'}
+                          </TableCell>
+                          <TableCell>{sim.port}</TableCell>
+                          <TableCell className="font-mono text-xs">
+                            {sim.phoneNumber || 'N/A'}
+                          </TableCell>
+                          <TableCell>{sim.operator}</TableCell>
+                          <TableCell>
+                            {getSIMStatusBadge(sim.status, sim.inserted)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-xs">
+                                <span>{sim.todaySent}/{sim.dailyLimit}</span>
+                                <span>{Math.round(usagePercentage)}%</span>
+                              </div>
+                              <Progress 
+                                value={usagePercentage} 
+                                className={`h-1 ${
+                                  usagePercentage >= 90 ? 'bg-red-500' :
+                                  usagePercentage >= 75 ? 'bg-yellow-500' : 'bg-green-500'
+                                }`}
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                value={sim.dailyLimit}
+                                onChange={(e) => {
+                                  const newLimit = parseInt(e.target.value) || 0;
+                                  setAllSims(prev => prev.map(s => 
+                                    s._id === sim._id ? { ...s, dailyLimit: newLimit } : s
+                                  ));
+                                }}
+                                className="w-20 h-8"
+                                min="0"
+                                max="10000"
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setEditingSim(sim);
+                                setDailyLimit(sim.dailyLimit);
+                                setSettingsDialogOpen(true);
+                              }}
+                            >
+                              Save
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Individual SIM Limit Dialog */}
+      <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              SIM Card Settings
+            </DialogTitle>
+            <DialogDescription>
+              Configure daily SMS limit for {editingSim?.phoneNumber || `Port ${editingSim?.port}`}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="dailyLimit">Daily SMS Limit</Label>
+              <Input
+                id="dailyLimit"
+                type="number"
+                placeholder="Enter daily SMS limit"
+                value={dailyLimit}
+                onChange={(e) => setDailyLimit(parseInt(e.target.value) || 0)}
+                min="0"
+                max="10000"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Maximum number of SMS messages allowed per day
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setSettingsDialogOpen(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveSimLimit}
+                disabled={isSaving}
+                className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* USSD Command Dialog */}
       <Dialog open={!!selectedSimForCommand} onOpenChange={() => {
         setSelectedSimForCommand(null);
@@ -825,7 +1098,8 @@ export function DeviceManagement() {
                 id="ussdCommand"
                 placeholder="Enter USSD command (e.g., *102#)"
                 value={ussdCommand}
-                onChange={(e) => setUssdCommand(e.target.value)}onKeyDown={(e) => {
+                onChange={(e) => setUssdCommand(e.target.value)}
+                onKeyDown={(e) => {
                   if (e.key === 'Enter' && selectedSimForCommand) {
                     handleSendUSSD(selectedSimForCommand.device, selectedSimForCommand.port, ussdCommand);
                   }
@@ -876,133 +1150,59 @@ export function DeviceManagement() {
 
       {/* USSD History Dialog */}
       <Dialog open={!!selectedSimForHistory} onOpenChange={() => setSelectedSimForHistory(null)}>
-      <DialogContent className="max-w-2xl max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <History className="h-5 w-5" />
-            USSD Command History
-          </DialogTitle>
-          <DialogDescription>
-            Port {selectedSimForHistory?.port} command history
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-3 overflow-y-auto max-h-[60vh]">
-          {selectedSimForHistory ? (
-            (() => {
-        
-
-              return ussdHistory.length > 0 ? (
-                ussdHistory.map((cmd) => (
-                  <Card key={cmd._id} className="p-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="font-mono">
-                            {cmd.command}
-                          </Badge>
-                          {getUSSDStatusBadge(cmd.status)}
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(cmd.timestamp).toLocaleString()}
-                        </span>
-                      </div>
-
-                      {/* Response block */}
-                      {cmd.response && cmd.response.trim() !== "" && (
-                        <div className="bg-gray-50 p-3 rounded-md">
-                          <p className="text-xs font-semibold text-gray-600 mb-1">Response:</p>
-                          <p className="text-sm whitespace-pre-wrap">{cmd.response}</p>
-                        </div>
-                      )}
-
-                      {/* Error block */}
-                      {cmd.error && (
-                        <div className="bg-red-50 p-3 rounded-md">
-                          <p className="text-xs font-semibold text-red-600 mb-1">Error:</p>
-                          <p className="text-sm text-red-700">{cmd.error}</p>
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <History className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-muted-foreground">No USSD command history available</p>
-                </div>
-              );
-            })()
-          ) : (
-            <div className="text-center py-8">
-              <History className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-muted-foreground">No USSD command history available</p>
-            </div>
-          )}
-        </div>
-      </DialogContent>
-      </Dialog>
-
-      {/* Settings Dialog */}
-      <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Settings className="h-5 w-5" />
-              Device Settings
+              <History className="h-5 w-5" />
+              USSD Command History
             </DialogTitle>
             <DialogDescription>
-              Configure settings for {editingDevice?.name}
+              Port {selectedSimForHistory?.port} command history
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="dailyLimit">Daily SMS Limit</Label>
-              <Input
-                id="dailyLimit"
-                type="number"
-                placeholder="Enter daily SMS limit"
-                value={dailyLimit}
-                onChange={(e) => setDailyLimit(parseInt(e.target.value) || 0)}
-                min="0"
-                max="10000"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Maximum number of SMS messages allowed per day
-              </p>
-            </div>
 
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setSettingsDialogOpen(false)}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSaveSettings}
-                disabled={isSaving}
-                className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
-            </div>
+          <div className="space-y-3 overflow-y-auto max-h-[60vh]">
+            {selectedSimForHistory && ussdHistory.length > 0 ? (
+              ussdHistory.map((cmd: USSDCommand) => (
+                <Card key={cmd._id} className="p-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-mono">
+                          {cmd.command}
+                        </Badge>
+                        {getUSSDStatusBadge(cmd.status)}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(cmd.timestamp).toLocaleString()}
+                      </span>
+                    </div>
+
+                    {cmd.response && cmd.response.trim() !== "" && (
+                      <div className="bg-gray-50 p-3 rounded-md">
+                        <p className="text-xs font-semibold text-gray-600 mb-1">Response:</p>
+                        <p className="text-sm whitespace-pre-wrap">{cmd.response}</p>
+                      </div>
+                    )}
+
+                    {cmd.error && (
+                      <div className="bg-red-50 p-3 rounded-md">
+                        <p className="text-xs font-semibold text-red-600 mb-1">Error:</p>
+                        <p className="text-sm text-red-700">{cmd.error}</p>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              ))
+            ) : (
+              <div className="text-center py-8">
+                <History className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-muted-foreground">No USSD command history available</p>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }

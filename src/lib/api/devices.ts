@@ -97,7 +97,7 @@ static async updateDeviceSettings(deviceId: string, settings: { dailyLimit: numb
   }
 }
 
-  static async getDevices(): Promise<DeviceStatus | null> {
+  static async getDevices(): Promise<any | null> {
     try {
       const response = await deviceAPI.getAll();;
       console.log("getDevices response:", response);
