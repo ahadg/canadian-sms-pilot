@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,7 +78,7 @@ export function Inbox() {
     }
     await syncMessagesFromDevice(currentDevice._id);
   }, [syncMessagesFromDevice]);
-  console.log("currentConversation",currentConversation)
+
   const handleConversationReply = useCallback(async () => {
     const currentDevice = selectedDeviceRef.current;
     if (!currentConversation || !replyText.trim() || !currentDevice) {
@@ -111,7 +111,7 @@ export function Inbox() {
       toast.error('No device selected');
       return;
     }
-    console.log("conversation",conversation)
+
     // Fetch the conversation first
     await fetchConversation(
       conversation.simId, 
@@ -127,8 +127,6 @@ export function Inbox() {
       markConversationAsRead(conversation.phoneNumber, conversation.port, conversation.slot);
     }
   }, [fetchConversation, markConversationAsRead]);
-
-
 
   const formatDate = useCallback((timestamp: string): string => {
     const date = new Date(timestamp);
@@ -151,6 +149,84 @@ export function Inbox() {
       minute: '2-digit'
     });
   }, []);
+
+  // Filter conversations based on active tab and filters
+  const filteredConversations = useMemo(() => {
+    let filtered = conversations;
+
+    // Filter by active tab
+    switch (activeTab) {
+      case 'unread':
+        filtered = filtered.filter(conv => conv.unreadCount > 0);
+        break;
+      case 'inbound':
+        filtered = filtered.filter(conv => conv.lastDirection === 'inbound');
+        break;
+      case 'outbound':
+        filtered = filtered.filter(conv => conv.lastDirection === 'outbound');
+        break;
+      case 'all':
+      default:
+        // No additional filtering for 'all'
+        break;
+    }
+
+    // Apply search filter
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      filtered = filtered.filter(conv => 
+        conv.phoneNumber?.toLowerCase().includes(searchLower) ||
+        decodeBase64(conv.lastMessage)?.toLowerCase().includes(searchLower) ||
+        conv.contact?.firstName?.toLowerCase().includes(searchLower) ||
+        conv.contact?.lastName?.toLowerCase().includes(searchLower) ||
+        `${conv.contact?.firstName || ''} ${conv.contact?.lastName || ''}`.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Apply status filter
+    if (filters.status !== 'all') {
+      switch (filters.status) {
+        case 'read':
+          filtered = filtered.filter(conv => conv.unreadCount === 0);
+          break;
+        case 'delivered':
+          // For conversations, we might consider all as delivered since they're in the list
+          break;
+        case 'replied':
+          filtered = filtered.filter(conv => conv.lastDirection === 'outbound');
+          break;
+        case 'failed':
+          // You might need to track failed messages in your conversation data
+          break;
+        default:
+          break;
+      }
+    }
+
+    // Apply direction filter
+    if (filters.direction !== 'all') {
+      filtered = filtered.filter(conv => 
+        filters.direction === 'inbound' ? 
+          conv.lastDirection === 'inbound' : 
+          conv.lastDirection === 'outbound'
+      );
+    }
+
+    // Apply date filters
+    if (filters.dateFrom) {
+      const fromDate = new Date(filters.dateFrom);
+      fromDate.setHours(0, 0, 0, 0); // Start of the day
+      filtered = filtered.filter(conv => new Date(conv.lastTimestamp) >= fromDate);
+    }
+
+    if (filters.dateTo) {
+      const toDate = new Date(filters.dateTo);
+      toDate.setHours(23, 59, 59, 999); // End of the day
+      filtered = filtered.filter(conv => new Date(conv.lastTimestamp) <= toDate);
+    }
+
+    return filtered;
+  }, [conversations, activeTab, filters]);
 
   // Effects with proper dependencies
   useEffect(() => {
@@ -300,7 +376,7 @@ export function Inbox() {
                   <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="search"
-                    placeholder="Search messages, phone numbers..."
+                    placeholder="Search messages, phone numbers, contacts..."
                     value={filters.search}
                     onChange={(e) => updateFilter('search', e.target.value)}
                     className="pl-9"
@@ -386,7 +462,7 @@ export function Inbox() {
                 <MessageSquare className="h-5 w-5" />
                 Conversations
                 <Badge variant="secondary" className="ml-2">
-                  {conversations.length}
+                  {filteredConversations.length}
                 </Badge>
               </CardTitle>
             </CardHeader>
@@ -406,11 +482,13 @@ export function Inbox() {
                     <RefreshCw className="h-8 w-8 mx-auto animate-spin text-muted-foreground" />
                     <p className="text-sm text-muted-foreground mt-2">Loading messages...</p>
                   </div>
-                ) : conversations.length === 0 ? (
+                ) : filteredConversations.length === 0 ? (
                   <div className="p-8 text-center">
                     <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground mt-2">No conversations found</p>
-                    {messages.length === 0 && selectedDevice && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      {conversations.length === 0 ? 'No conversations found' : 'No conversations match your filters'}
+                    </p>
+                    {conversations.length === 0 && selectedDevice && (
                       <Button 
                         variant="outline" 
                         size="sm" 
@@ -421,9 +499,19 @@ export function Inbox() {
                         {isSyncing ? 'Syncing...' : 'Sync from Device'}
                       </Button>
                     )}
+                    {conversations.length > 0 && filteredConversations.length === 0 && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={clearFilters}
+                        className="mt-2"
+                      >
+                        Clear Filters
+                      </Button>
+                    )}
                   </div>
                 ) : (
-                  conversations.map((conversation) => (
+                  filteredConversations.map((conversation) => (
                     <div
                       key={`${conversation.phoneNumber}-${conversation.port}-${conversation.slot}`}
                       className={`p-4 border-b cursor-pointer hover:bg-muted/50 transition-colors ${
@@ -437,8 +525,15 @@ export function Inbox() {
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           <User className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium text-sm truncate" title={conversation.phoneNumber}>
-                            {conversation.phoneNumber || 'Unknown'}
+                          <span className="font-medium text-sm truncate" title={
+                            conversation.contact?.firstName && conversation.contact?.lastName 
+                              ? `${conversation.contact.firstName} ${conversation.contact.lastName}`
+                              : conversation.phoneNumber || 'Unknown'
+                          }>
+                            {conversation.contact?.firstName && conversation.contact?.lastName 
+                              ? `${conversation.contact.firstName} ${conversation.contact.lastName}`
+                              : conversation.phoneNumber || 'Unknown'
+                            }
                           </span>
                           {conversation.unreadCount > 0 && (
                             <Badge variant="default" className="bg-blue-500 text-white text-xs px-1 py-0">
@@ -460,10 +555,17 @@ export function Inbox() {
                       
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <PhoneIcon className="h-3 w-3" />
-                        <div>
                         <span>Port {conversation.port}-{conversation.slot}</span>
-                        </div>
-                        {conversation?.isReport && <PhoneOffIcon className="h-3 w-3" color="red" />}
+                        {conversation.lastDirection === 'inbound' ? (
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
+                            In
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                            Out
+                          </Badge>
+                        )}
+                        {conversation.contact?.isReport && <PhoneOffIcon className="h-3 w-3" color="red" />}
                       </div>
                     </div>
                   ))
@@ -494,7 +596,10 @@ export function Inbox() {
                     <div className="flex items-center gap-2">
                       <User className="h-5 w-5 text-muted-foreground" />
                       <CardTitle className="text-xl">
-                        {currentConversation.phoneNumber || 'Unknown Number'}
+                        {currentConversation.contact?.firstName && currentConversation.contact?.lastName 
+                          ? `${currentConversation.contact.firstName} ${currentConversation.contact.lastName}`
+                          : currentConversation.phoneNumber || 'Unknown Number'
+                        }
                       </CardTitle>
                     </div>
                     <div className="flex items-center gap-2">
@@ -507,9 +612,20 @@ export function Inbox() {
                           {currentConversation.unreadCount} unread
                         </Badge>
                       )}
+                      {currentConversation.contact?.isReport && (
+                        <Badge variant="destructive" className="flex items-center gap-1">
+                          <PhoneOffIcon className="h-3 w-3" />
+                          Reported
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
+                {currentConversation.contact?.firstName && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {currentConversation.phoneNumber}
+                  </p>
+                )}
               </CardHeader>
 
               <CardContent className="flex-1 flex flex-col p-0">
@@ -564,7 +680,8 @@ export function Inbox() {
                 <div className="border-t p-4 bg-muted/20">
                   <div className="space-y-3">
                     <Label htmlFor="conversation-reply" className="text-sm font-medium">
-                      Reply to {currentConversation.phoneNumber} {currentConversation?.isReport ? '(Report)' : ''}
+                      Reply to {currentConversation.phoneNumber} 
+                      {currentConversation.contact?.isReport && ' (Reported)'}
                     </Label>
                     <div className="flex gap-2">
                       <Textarea
