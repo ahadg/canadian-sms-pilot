@@ -366,7 +366,7 @@ export function DeviceManagement() {
       if (result.success) {
         toast.success(`USSD command executed successfully`);
         // Refresh USSD history for this SIM
-        await loadUSSDHistory(device.id, port);
+        //await loadUSSDHistory(device.id, port);
         setSelectedSimForCommand(null);
         setUssdCommand("");
       } else {

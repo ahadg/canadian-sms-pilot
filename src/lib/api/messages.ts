@@ -123,6 +123,13 @@ export const messageAPI = {
     });
   },
 
+  checkSpam: async (data: any) => {
+    return authFetch<{ template: any }>('/api/messages/ai/check-spam', {
+      method: 'POST',
+      data: JSON.stringify(data)
+    });
+  },
+
   // ============ AI Generation Methods ============
 
   // Generate variants using AI

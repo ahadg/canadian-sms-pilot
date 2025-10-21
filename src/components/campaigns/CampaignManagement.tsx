@@ -55,8 +55,10 @@ import {
   Eye,
   Copy,
   RotateCcw,
-  AlertTriangle
+  AlertTriangle,
+  Shield
 } from "lucide-react";
+
 import { Device, useCampaigns } from "@/hooks/useCampaigns";
 import { toast } from "sonner";
 import { messageAPI, MessageVariant, SavedMessage } from "@/lib/api/messages";
@@ -171,7 +173,9 @@ export function CampaignManagement() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
-
+  const [spamAnalysis, setSpamAnalysis] = useState(null);
+  const [checkingSpam, setCheckingSpam] = useState(false);
+  
   // Message variant state
   const [selectedMessageId, setSelectedMessageId] = useState<string>('');
   const [selectedAIMessage, setSelectedAIMessage] = useState<SavedMessage | null>(null);
@@ -227,6 +231,32 @@ export function CampaignManagement() {
 
     loadDevices();
   }, []);
+
+  // Add this function with your other handlers
+const handleCheckSpam = async (messageContent) => {
+  if (!messageContent.trim()) {
+    toast.error('Please enter a message to check');
+    return;
+  }
+
+  setCheckingSpam(true);
+  try {
+    const response = await messageAPI.checkSpam({
+      message: messageContent,
+      companyName: "Your Company", // You might want to make this dynamic
+      messageCategory: "Promotional" // You can make this dynamic based on your needs
+    });
+   console.log("handleCheckSpam",response)
+    setSpamAnalysis(response.data.spamAnalysis);
+    toast.success('Spam analysis completed');
+  } catch (error) {
+    console.error('Error checking spam:', error);
+    toast.error('Failed to analyze spam score');
+  } finally {
+    setCheckingSpam(false);
+  }
+};
+
 
   // Fetch message variants when a message is selected
   const fetchMessageVariants = async (messageId: string) => {
@@ -688,64 +718,177 @@ export function CampaignManagement() {
                     className="space-y-3"
                   >
                     {/* Single Variant Option */}
-                    <div className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-accent/50 transition-colors">
-                      <RadioGroupItem value="single_variant" id="single_variant" />
-                      <div className="flex-1 space-y-2">
-                        <Label htmlFor="single_variant" className="flex items-center gap-2 font-medium cursor-pointer">
-                          <FileText className="h-4 w-4" />
-                          Single Message Variant
-                        </Label>
-                        <p className="text-sm text-muted-foreground">
-                          Send the same message content to all recipients
-                        </p>
-                        
-                        {messageVariationType === "single_variant" && (
-                          <div className="mt-3 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <Label htmlFor="customMessage">Message Content *</Label>
-                              {selectedAIMessage && (
-                                <div className="flex gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleUseBaseMessage}
-                                    disabled={!selectedAIMessage.baseMessage}
-                                  >
-                                    <Copy className="h-3 w-3 mr-1" />
-                                    Use Base
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleUseOriginalPrompt}
-                                    disabled={!selectedAIMessage.originalPrompt}
-                                  >
-                                    <Copy className="h-3 w-3 mr-1" />
-                                    Use Prompt
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                            <Textarea 
-                              id="customMessage"
-                              placeholder="Enter your SMS message here..."
-                              className="min-h-[100px] font-mono text-sm"
-                              value={customMessageContent}
-                              onChange={(e) => handleCustomMessageChange(e.target.value)}
-                            />
-                            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                              <span>{getMessageStats(customMessageContent).charCount} characters</span>
-                              <span>{getMessageStats(customMessageContent).segments} SMS segment(s)</span>
-                              <span className={getMessageStats(customMessageContent).encoding === 'USC2' ? 'text-amber-600' : ''}>
-                                {getMessageStats(customMessageContent).encoding} encoding
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    {/* Single Variant Option */}
+<div className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-accent/50 transition-colors">
+  <RadioGroupItem value="single_variant" id="single_variant" />
+  <div className="flex-1 space-y-2">
+    <Label htmlFor="single_variant" className="flex items-center gap-2 font-medium cursor-pointer">
+      <FileText className="h-4 w-4" />
+      Single Message Variant
+    </Label>
+    <p className="text-sm text-muted-foreground">
+      Send the same message content to all recipients
+    </p>
+    
+    {messageVariationType === "single_variant" && (
+      <div className="mt-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="customMessage">Message Content *</Label>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleCheckSpam(customMessageContent)}
+              disabled={checkingSpam || !customMessageContent.trim()}
+            >
+              {checkingSpam ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : (
+                <Shield className="h-3 w-3 mr-1" />
+              )}
+              {checkingSpam ? 'Checking...' : 'Check Spam'}
+            </Button>
+            {selectedAIMessage && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUseBaseMessage}
+                  disabled={!selectedAIMessage.baseMessage}
+                >
+                  <Copy className="h-3 w-3 mr-1" />
+                  Use Base
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUseOriginalPrompt}
+                  disabled={!selectedAIMessage.originalPrompt}
+                >
+                  <Copy className="h-3 w-3 mr-1" />
+                  Use Prompt
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+        <Textarea 
+          id="customMessage"
+          placeholder="Enter your SMS message here..."
+          className="min-h-[100px] font-mono text-sm"
+          value={customMessageContent}
+          onChange={(e) => handleCustomMessageChange(e.target.value)}
+        />
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{getMessageStats(customMessageContent).charCount} characters</span>
+          <span>{getMessageStats(customMessageContent).segments} SMS segment(s)</span>
+          <span className={getMessageStats(customMessageContent).encoding === 'USC2' ? 'text-amber-600' : ''}>
+            {getMessageStats(customMessageContent).encoding} encoding
+          </span>
+        </div>
+
+        {/* Spam Analysis Results */}
+        {spamAnalysis && (
+          <div className="mt-4 p-4 border rounded-lg bg-slate-50">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Spam Analysis Results
+              </h4>
+              <Badge 
+                variant={
+                  spamAnalysis.riskLevel === 'Low' ? 'default' :
+                  spamAnalysis.riskLevel === 'Medium' ? 'secondary' :
+                  spamAnalysis.riskLevel === 'High' ? 'destructive' : 'destructive'
+                }
+                className="capitalize"
+              >
+                {spamAnalysis.riskLevel} Risk
+              </Badge>
+            </div>
+
+            {/* Spam Score Bar */}
+            <div className="mb-4">
+              <div className="flex justify-between text-sm mb-1">
+                <span>Spam Score: {spamAnalysis.spamScore}/10</span>
+                <span className={
+                  spamAnalysis.spamScore <= 3 ? 'text-green-600' :
+                  spamAnalysis.spamScore <= 6 ? 'text-amber-600' : 'text-red-600'
+                }>
+                  {spamAnalysis.spamScore <= 3 ? 'Good' :
+                   spamAnalysis.spamScore <= 6 ? 'Moderate' : 'Poor'}
+                </span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-2">
+                <div 
+                  className={`h-2 rounded-full ${
+                    spamAnalysis.spamScore <= 3 ? 'bg-green-500' :
+                    spamAnalysis.spamScore <= 6 ? 'bg-amber-500' : 'bg-red-500'
+                  }`}
+                  style={{ width: `${(spamAnalysis.spamScore / 10) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Key Indicators */}
+            {spamAnalysis.spamIndicators && spamAnalysis.spamIndicators.length > 0 && (
+              <div className="mb-3">
+                <h5 className="text-sm font-medium mb-2 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  Spam Indicators Found:
+                </h5>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  {spamAnalysis.spamIndicators.map((indicator, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <span className="text-amber-600 mt-0.5">•</span>
+                      {indicator}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Improvement Suggestions */}
+            {spamAnalysis.improvementSuggestions && spamAnalysis.improvementSuggestions.length > 0 && (
+              <div>
+                <h5 className="text-sm font-medium mb-2 flex items-center gap-1">
+                  <CheckCircle className="h-3 w-3" />
+                  Improvement Suggestions:
+                </h5>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  {spamAnalysis.improvementSuggestions.map((suggestion, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <span className="text-green-600 mt-0.5">•</span>
+                      {suggestion}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Carrier Risk */}
+            <div className="mt-3 pt-3 border-t text-xs">
+              <div className="flex justify-between">
+                <span>Carrier Filter Risk:</span>
+                <Badge 
+                  variant={
+                    spamAnalysis.carrierFilterRisk === 'Low' ? 'default' :
+                    spamAnalysis.carrierFilterRisk === 'Medium' ? 'secondary' : 'destructive'
+                  }
+                >
+                  {spamAnalysis.carrierFilterRisk}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+</div>
 
                     {/* Multiple Variants Option */}
                     <div className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-accent/50 transition-colors">
