@@ -32,7 +32,12 @@ import {
   ChevronUp,
   Check,
   FileText,
-  Zap
+  Zap,
+  MapPin,
+  Mail,
+  Phone,
+  Link,
+  AlertCircle
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { messageAPI } from "@/lib/api/messages";
@@ -72,6 +77,10 @@ interface GenerationSettings {
   creativityLevel: number;
   includeEmojis: boolean;
   companyName: string;
+  companyAddress?: string;
+  companyEmail?: string;
+  companyPhone?: string;
+  companyWebsite?: string;
   unsubscribeText: string;
   customInstructions: string;
 }
@@ -243,6 +252,10 @@ export function AIMessages() {
         creativityLevel: settings.creativityLevel,
         includeEmojis: settings.includeEmojis,
         companyName: settings.companyName,
+        companyAddress: settings.companyAddress,
+        companyEmail: settings.companyEmail,
+        companyPhone: settings.companyPhone,
+        companyWebsite: settings.companyWebsite,
         unsubscribeText: settings.unsubscribeText,
         customInstructions: settings.customInstructions,
         category,
@@ -251,7 +264,6 @@ export function AIMessages() {
       setGeneratedVariants(response.data.variants);
     } catch (error) {
       console.error('Failed to generate variants:', error);
-      // You can add a toast notification here
       alert('Failed to generate variants. Please try again.');
     } finally {
       setIsGenerating(false);
@@ -277,16 +289,13 @@ export function AIMessages() {
       let savedMessage: SavedMessage;
       
       if (selectedMessage) {
-        // Update existing message
         savedMessage = await messageDatabase.updateMessage(selectedMessage._id, messageData);
       } else {
-        // Create new message
         savedMessage = await messageDatabase.saveMessage(messageData);
       }
       
       await loadSavedMessages();
       
-      // Reset form if creating new
       if (!selectedMessage) {
         resetForm();
       }
@@ -365,7 +374,6 @@ export function AIMessages() {
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      // You could add a toast notification here
       console.log('Copied to clipboard');
     } catch (error) {
       console.error('Failed to copy:', error);
@@ -404,7 +412,6 @@ export function AIMessages() {
         <TabsList>
           <TabsTrigger value="generate">Generate Messages</TabsTrigger>
           <TabsTrigger value="messages">Saved Messages ({messages.length})</TabsTrigger>
-          {/* <TabsTrigger value="templates">Templates ({templates.length})</TabsTrigger> */}
         </TabsList>
 
         <TabsContent value="generate" className="space-y-6">
@@ -463,6 +470,80 @@ export function AIMessages() {
                       placeholder="Reply STOP to unsubscribe"
                       required
                     />
+                  </div>
+
+                  {/* Contact Information Section - Always Visible */}
+                  <div className="pt-4 border-t">
+                    {/* <div className="flex items-center gap-2 mb-3">
+                      <AlertCircle className="h-5 w-5 text-amber-500" />
+                      <Label className="text-base font-semibold text-amber-600">
+                        Contact Information (Recommended for CASL Compliance)
+                      </Label>
+                    </div> */}
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Adding contact details ensures CASL compliance and builds trust with recipients.
+                    </p>
+
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="flex items-center gap-2 text-sm">
+                          <MapPin className="h-4 w-4" />
+                          Company Address
+                          <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+                            Recommended
+                          </Badge>
+                        </Label>
+                        <Input
+                          value={settings.companyAddress || ''}
+                          onChange={(e) => updateSettings('companyAddress', e.target.value)}
+                          placeholder="123 Main St, City, Province, Postal Code"
+                          className="mt-1"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Required by CASL for proper sender identification
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label className="flex items-center gap-2 text-sm">
+                          <Mail className="h-4 w-4" />
+                          Email Address
+                        </Label>
+                        <Input
+                          type="email"
+                          value={settings.companyEmail || ''}
+                          onChange={(e) => updateSettings('companyEmail', e.target.value)}
+                          placeholder="contact@company.com"
+                          className="mt-1"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="flex items-center gap-2 text-sm">
+                          <Phone className="h-4 w-4" />
+                          Phone Number
+                        </Label>
+                        <Input
+                          value={settings.companyPhone || ''}
+                          onChange={(e) => updateSettings('companyPhone', e.target.value)}
+                          placeholder="+1 (555) 123-4567"
+                          className="mt-1"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="flex items-center gap-2 text-sm">
+                          <Link className="h-4 w-4" />
+                          Website
+                        </Label>
+                        <Input
+                          value={settings.companyWebsite || ''}
+                          onChange={(e) => updateSettings('companyWebsite', e.target.value)}
+                          placeholder="https://company.com"
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <div>
@@ -621,7 +702,6 @@ export function AIMessages() {
                             )}
                             Save Message
                           </Button>
-                         
                         </div>
                       </div>
                       
@@ -825,7 +905,6 @@ export function AIMessages() {
             )}
           </div>
         </TabsContent>
-
       </Tabs>
     </div>
   );

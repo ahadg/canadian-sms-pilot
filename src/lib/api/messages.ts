@@ -35,6 +35,10 @@ export interface GenerationRequest {
   creativityLevel?: number;
   includeEmojis?: boolean;
   companyName: string;
+  companyAddress?: string;
+  companyEmail?: string;
+  companyPhone?: string;
+  companyWebsite?: string;
   unsubscribeText?: string;
   customInstructions?: string;
   category?: string;

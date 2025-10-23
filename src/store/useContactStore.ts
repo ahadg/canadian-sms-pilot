@@ -141,7 +141,7 @@ export const useContactStore = create<ContactState>((set, get) => ({
       
       const params: any = {
         page: filters.page || 1,
-        limit: filters.limit || 50
+        limit: filters.limit || 5000
       };
 
       if (filters.optedIn !== undefined) {
@@ -161,7 +161,7 @@ export const useContactStore = create<ContactState>((set, get) => ({
           currentPage: response.data.currentPage || 1,
           totalPages: response.data.totalPages || 1,
           total: response.data.total || 0,
-          limit: response.data.limit || 50
+          limit: response.data.limit || 5000
         },
       });
       
