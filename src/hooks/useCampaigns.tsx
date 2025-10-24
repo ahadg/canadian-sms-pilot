@@ -421,7 +421,7 @@ const updateCampaignStatus = async (id: string, status: Campaign['status']) => {
         campaign._id === id ? { ...campaign, status } : campaign
       )
     );
-    toast.success(`Campaign ${status}`);
+    toast.success(`Campaign ${status} successfully`);
   } catch (error) {
     console.error('Error updating campaign status:', error);
     toast.error('Failed to update campaign status');

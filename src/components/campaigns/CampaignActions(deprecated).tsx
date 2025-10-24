@@ -95,7 +95,7 @@ export function CampaignActions({campaign, devices,isConnected,
         try {
             await pauseCampaignTasks(campaign.device, [campaign.taskId]);
             await updateCampaignStatus(campaign._id, 'paused');
-            toast.success('Campaign paused');
+            //toast.success('Campaign paused');
         } catch (error) {
             console.error('Error pausing campaign:', error);
             toast.error('Failed to pause campaign');

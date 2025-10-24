@@ -67,7 +67,6 @@ import { contactAPI } from "@/lib/api/contacts";
 import { Campaign } from "@/lib/api/campaign";
 import { useSocketStore } from "@/store/useSocketStore";
 import { getStatusBadge } from "./utils";
-import { CampaignActions } from "./CampaignActions";
 import { useContactStore } from "@/store/useContactStore";
 import { ContactManagement } from "./ContactManagement";
 import { Badge } from "@/components/ui/badge";
@@ -501,7 +500,7 @@ const handleRevertToOriginal = () => {
         deliveredMessages: 0,
         failedMessages: 0,
         // Include message reference for AI campaigns
-        message: messageVariationType === "ai_random" ? selectedAIMessage?._id : undefined
+        message: selectedAIMessage?._id
       };
 
       console.log("Creating campaign with data:", campaignData);
@@ -553,8 +552,8 @@ const handleRevertToOriginal = () => {
     setLoadingActions(prev => ({ ...prev, [campaignId]: 'starting' }));
     try {
       await startCampaignProcessing(campaignId);
-      await updateCampaignStatus(campaignId, 'active');
-      toast.success('Campaign started successfully');
+      // await updateCampaignStatus(campaignId, 'active');
+      //toast.success('Campaign started successfully');
     } catch (error) {
       console.error('Error starting campaign:', error);
       toast.error('Failed to start campaign');
@@ -567,8 +566,8 @@ const handleRevertToOriginal = () => {
     setLoadingActions(prev => ({ ...prev, [campaignId]: 'pausing' }));
     try {
       await pauseCampaign(campaignId);
-      await updateCampaignStatus(campaignId, 'paused');
-      toast.success('Campaign paused successfully');
+      //await updateCampaignStatus(campaignId, 'paused');
+      //toast.success('Campaign paused successfully');
     } catch (error) {
       console.error('Error pausing campaign:', error);
       toast.error('Failed to pause campaign');
@@ -581,8 +580,8 @@ const handleRevertToOriginal = () => {
     setLoadingActions(prev => ({ ...prev, [campaignId]: 'resuming' }));
     try {
       await resumeCampaign(campaignId);
-      await updateCampaignStatus(campaignId, 'active');
-      toast.success('Campaign resumed successfully');
+      //await updateCampaignStatus(campaignId, 'active');
+      //toast.success('Campaign resumed successfully');
     } catch (error) {
       console.error('Error resuming campaign:', error);
       toast.error('Failed to resume campaign');
@@ -595,8 +594,8 @@ const handleRevertToOriginal = () => {
     setLoadingActions(prev => ({ ...prev, [campaignId]: 'stopping' }));
     try {
       await stopCampaign(campaignId);
-      await updateCampaignStatus(campaignId, 'completed');
-      toast.success('Campaign stopped successfully');
+     //await updateCampaignStatus(campaignId, 'completed');
+      //toast.success('Campaign stopped successfully');
     } catch (error) {
       console.error('Error stopping campaign:', error);
       toast.error('Failed to stop campaign');
