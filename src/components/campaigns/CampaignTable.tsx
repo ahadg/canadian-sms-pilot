@@ -19,7 +19,7 @@ interface CampaignTableProps {
   onStopCampaign: (id: string) => void;
   onViewCampaign: (campaign: Campaign) => void;
   onCreateCampaign: () => void;
-  onEditCampaign: (campaign: Campaign) => void; // Add this line
+  onEditCampaign: (campaign: Campaign) => void;
 }
 
 export function CampaignTable({
@@ -128,8 +128,13 @@ export function CampaignTable({
                       <TableCell>{getStatusBadge(campaign.status)}</TableCell>
                       <TableCell>
                         <div className="space-y-1">
-                          <div className="text-sm">
-                            {campaign.sentMessages?.toLocaleString()}/{campaign.totalContacts?.toLocaleString()}
+                          <div className="flex justify-between items-center text-sm">
+                            <span>
+                              {campaign.sentMessages?.toLocaleString()}/{campaign.totalContacts?.toLocaleString()}
+                            </span>
+                            <span className="text-red-600 font-medium">
+                              {campaign.failedMessages ? campaign.failedMessages?.toLocaleString() : ''}
+                            </span>
                           </div>
                           <Progress value={progress} className="h-2 w-24" />
                         </div>

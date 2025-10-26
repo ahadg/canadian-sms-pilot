@@ -29,7 +29,8 @@ import {
   PieChart,
   Phone,
   User,
-  Mail
+  Mail,
+  Filter
 } from "lucide-react";
 import { getStatusBadge } from "./utils";
 import { useState, useEffect } from "react";
@@ -45,7 +46,7 @@ interface MessageSentDetail {
   _id: string;
   phoneNumber: string;
   content: string;
-  status: 'pending' | 'sent' | 'delivered' | 'failed' | 'read' | 'undelivered';
+  status:  'sent' | 'delivered' | 'failed' ;
   sentAt?: string;
   deliveredAt?: string;
   failedAt?: string;
@@ -86,19 +87,22 @@ interface MessageStats {
 
 function CampaignMessages({ campaignId }: { campaignId: string }) {
   const [messages, setMessages] = useState<MessageSentDetail[]>([]);
+  const [filteredMessages, setFilteredMessages] = useState<MessageSentDetail[]>([]);
   const [stats, setStats] = useState<MessageStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<'all' | 'sent' | 'delivered' | 'failed'>('all');
 
   useEffect(() => {
     const fetchMessages = async () => {
       try {
         setLoading(true);
-        const response = await authFetch(`/api/sentmessages?campaignId=${campaignId}&limit=50`);
+        const response = await authFetch(`/api/sentmessages?campaignId=${campaignId}&limit=200`);
         const data = response
         
         if (data.success) {
           setMessages(data.data.messages);
+          setFilteredMessages(data.data.messages);
         } else {
           throw new Error(data.message);
         }
@@ -128,6 +132,26 @@ function CampaignMessages({ campaignId }: { campaignId: string }) {
     }
   }, [campaignId]);
 
+  useEffect(() => {
+    if (activeFilter === 'all') {
+      setFilteredMessages(messages);
+    } else {
+      setFilteredMessages(messages.filter(msg => msg.status === activeFilter));
+    }
+  }, [activeFilter, messages]);
+
+  const getStatusCounts = () => {
+    const counts = {
+      all: messages.length,
+      sent: messages.filter(msg => msg.status === 'sent').length,
+      delivered: messages.filter(msg => msg.status === 'delivered').length,
+      failed: messages.filter(msg => msg.status === 'failed').length,
+      pending: messages.filter(msg => msg.status === 'pending').length,
+      read: messages.filter(msg => msg.status === 'read').length,
+    };
+    return counts;
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'delivered': return 'bg-green-100 text-green-800 border-green-200';
@@ -154,6 +178,8 @@ function CampaignMessages({ campaignId }: { campaignId: string }) {
     return new Date(dateString).toLocaleString();
   };
 
+  const statusCounts = getStatusCounts();
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -175,10 +201,10 @@ function CampaignMessages({ campaignId }: { campaignId: string }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 h-full flex flex-col">
       {/* Stats Overview */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card className="bg-blue-50 border-blue-200">
             <CardContent className="p-3">
               <div className="flex items-center justify-between">
@@ -226,110 +252,194 @@ function CampaignMessages({ campaignId }: { campaignId: string }) {
         </div>
       )}
 
-      {/* Messages List */}
-      <div className="space-y-3">
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <List className="h-5 w-5" />
-            Message Details ({messages.length})
-          </h3>
-          {stats && (
-            <Badge variant="secondary" className="px-3 py-1">
-              Delivery Rate: {stats.overview.deliveryRate.toFixed(1)}%
-            </Badge>
-          )}
-        </div>
+      {/* Filter Tabs */}
+      <Card className="flex-1 flex flex-col min-h-0">
+        <CardContent className="p-4 flex-1 flex flex-col min-h-0">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Filter className="h-5 w-5" />
+              Message Details
+            </h3>
+            {stats && (
+              <Badge variant="secondary" className="px-3 py-1">
+                Delivery Rate: {stats.overview.deliveryRate.toFixed(1)}%
+              </Badge>
+            )}
+          </div>
 
-        <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-          {messages.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
-              <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>No messages found for this campaign</p>
+          <Tabs value={activeFilter} onValueChange={(value) => setActiveFilter(value as any)} className="flex-1 flex flex-col min-h-0">
+            <TabsList className="grid grid-cols-6 w-full">
+              <TabsTrigger value="all" className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4" />
+                All
+                <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
+                  {statusCounts.all}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="sent" className="flex items-center gap-2">
+                <Send className="h-4 w-4" />
+                Sent
+                <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
+                  {statusCounts.sent}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="delivered" className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" />
+                Delivered
+                <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
+                  {statusCounts.delivered}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="failed" className="flex items-center gap-2">
+                <XCircle className="h-4 w-4" />
+                Failed
+                <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
+                  {statusCounts.failed}
+                </Badge>
+              </TabsTrigger>
+            </TabsList>
+
+            <div className="mt-4 flex-1 min-h-0">
+              <TabsContent value="all" className="m-0 h-full">
+                <MessageList messages={filteredMessages} />
+              </TabsContent>
+              <TabsContent value="sent" className="m-0 h-full">
+                <MessageList messages={filteredMessages} />
+              </TabsContent>
+              <TabsContent value="delivered" className="m-0 h-full">
+                <MessageList messages={filteredMessages} />
+              </TabsContent>
+              <TabsContent value="failed" className="m-0 h-full">
+                <MessageList messages={filteredMessages} />
+              </TabsContent>
             </div>
-          ) : (
-            messages.map((message) => (
-              <Card key={message._id} className="p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-3 flex-1 min-w-0">
-                    {/* Header with Phone and Status */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Phone className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium text-sm truncate">
-                          {message.phoneNumber}
-                        </span>
-                      </div>
-                      <Badge 
-                        variant="secondary" 
-                        className={`flex items-center gap-1 text-xs border ${getStatusColor(message.status)}`}
-                      >
-                        {getStatusIcon(message.status)}
-                        {message.status.charAt(0).toUpperCase() + message.status.slice(1)}
-                      </Badge>
-                    </div>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
-                    {/* Message Content */}
-                    <div className="bg-muted/50 rounded-lg p-3">
-                      <p className="text-sm whitespace-pre-wrap break-words">
-                        {message.content}
-                      </p>
-                    </div>
+function MessageList({ messages }: { messages: MessageSentDetail[] }) {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'delivered': return 'bg-green-100 text-green-800 border-green-200';
+      case 'sent': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'failed': return 'bg-red-100 text-red-800 border-red-200';
+      case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'read': return 'bg-purple-100 text-purple-800 border-purple-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
 
-                    {/* Contact Info */}
-                    {message.contact && (
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <User className="h-3 w-3" />
-                          <span>{message.contact.firstName} {message.contact.lastName}</span>
-                        </div>
-                        {message.contact.email && (
-                          <div className="flex items-center gap-1">
-                            <Mail className="h-3 w-3" />
-                            <span>{message.contact.email}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'delivered': return <CheckCircle className="h-3 w-3" />;
+      case 'sent': return <Send className="h-3 w-3" />;
+      case 'failed': return <XCircle className="h-3 w-3" />;
+      case 'pending': return <Clock className="h-3 w-3" />;
+      case 'read': return <MessageCircle className="h-3 w-3" />;
+      default: return <MessageCircle className="h-3 w-3" />;
+    }
+  };
 
-                    {/* Timestamps */}
-                    <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                      {message.sentAt && (
-                        <div className="flex items-center gap-1">
-                          <Send className="h-3 w-3" />
-                          <span>Sent: {formatDateTime(message.sentAt)}</span>
-                        </div>
-                      )}
-                      {message.deliveredAt && (
-                        <div className="flex items-center gap-1">
-                          <CheckCircle className="h-3 w-3" />
-                          <span>Delivered: {formatDateTime(message.deliveredAt)}</span>
-                        </div>
-                      )}
-                      {message.failedAt && (
-                        <div className="flex items-center gap-1">
-                          <XCircle className="h-3 w-3" />
-                          <span>Failed: {formatDateTime(message.failedAt)}</span>
-                        </div>
-                      )}
-                    </div>
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString();
+  };
 
-                    {/* Error Details */}
-                    {message.errorDetails.message && (
-                      <div className="text-xs bg-red-50 text-red-700 p-2 rounded border border-red-200">
-                        <div className="font-medium">Error Details:</div>
-                        <div>{message.errorDetails.message}</div>
-                        {message.errorDetails.code && (
-                          <div className="mt-1">Error Code: {message.errorDetails.code}</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            ))
-          )}
+  if (messages.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg h-full flex items-center justify-center">
+        <div>
+          <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+          <p>No messages found</p>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 h-full overflow-y-auto pr-2">
+      {messages.map((message) => (
+        <Card key={message._id} className="p-4 hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div className="space-y-3 flex-1 min-w-0">
+              {/* Header with Phone and Status */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium text-sm truncate">
+                    {message.phoneNumber}
+                  </span>
+                </div>
+                <Badge 
+                  variant="secondary" 
+                  className={`flex items-center gap-1 text-xs border ${getStatusColor(message.status)}`}
+                >
+                  {getStatusIcon(message.status)}
+                  {message.status.charAt(0).toUpperCase() + message.status.slice(1)}
+                </Badge>
+              </div>
+
+              {/* Message Content */}
+              <div className="bg-muted/50 rounded-lg p-3">
+                <p className="text-sm whitespace-pre-wrap break-words">
+                  {message.content}
+                </p>
+              </div>
+
+              {/* Contact Info */}
+              {message.contact && (
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <User className="h-3 w-3" />
+                    <span>{message.contact.firstName} {message.contact.lastName}</span>
+                  </div>
+                  {message.contact.email && (
+                    <div className="flex items-center gap-1">
+                      <Mail className="h-3 w-3" />
+                      <span>{message.contact.email}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Timestamps */}
+              <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                {message.sentAt && (
+                  <div className="flex items-center gap-1">
+                    <Send className="h-3 w-3" />
+                    <span>Sent: {formatDateTime(message.sentAt)}</span>
+                  </div>
+                )}
+                {message.deliveredAt && (
+                  <div className="flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3" />
+                    <span>Delivered: {formatDateTime(message.deliveredAt)}</span>
+                  </div>
+                )}
+                {message.failedAt && (
+                  <div className="flex items-center gap-1">
+                    <XCircle className="h-3 w-3" />
+                    <span>Failed: {formatDateTime(message.failedAt)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Error Details */}
+              {message.errorDetails?.message && (
+                <div className="text-xs bg-red-50 text-red-700 p-2 rounded border border-red-200">
+                  <div className="font-medium">Error Details:</div>
+                  <div>{message.errorDetails.message}</div>
+                  {message.errorDetails.code && (
+                    <div className="mt-1">Error Code: {message.errorDetails.code}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+      ))}
     </div>
   );
 }
@@ -359,7 +469,7 @@ export function CampaignDetailsDialog({ campaign, isOpen, onClose }: CampaignDet
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
+      <DialogContent className="max-w-6xl h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Target className="h-5 w-5" />
@@ -370,7 +480,7 @@ export function CampaignDetailsDialog({ campaign, isOpen, onClose }: CampaignDet
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="messages" className="space-y-6">
+        <Tabs defaultValue="messages" className="space-y-6 flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="messages" className="flex items-center gap-2">
               <MessageCircle className="h-4 w-4" />
@@ -387,19 +497,16 @@ export function CampaignDetailsDialog({ campaign, isOpen, onClose }: CampaignDet
           </TabsList>
 
           {/* Message Details Tab */}
-          <TabsContent value="messages" className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                
-              </CardHeader>
-              <CardContent>
+          <TabsContent value="messages" className="space-y-4 flex-1 flex flex-col min-h-0 m-0">
+            <Card className="flex-1 flex flex-col min-h-0">
+              <CardContent className="p-0 flex-1">
                 <CampaignMessages campaignId={campaign._id} />
               </CardContent>
             </Card>
           </TabsContent>
 
           {/* Campaign Overview Tab */}
-          <TabsContent value="overview" className="space-y-4">
+          <TabsContent value="overview" className="space-y-4 m-0">
             {/* Campaign Status and Basic Info */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card>
@@ -531,7 +638,7 @@ export function CampaignDetailsDialog({ campaign, isOpen, onClose }: CampaignDet
           </TabsContent>
 
           {/* Settings Tab */}
-          <TabsContent value="settings" className="space-y-4">
+          <TabsContent value="settings" className="space-y-4 m-0">
             {/* Campaign Settings */}
             <Card>
               <CardHeader>
