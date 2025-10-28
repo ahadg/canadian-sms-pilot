@@ -182,7 +182,7 @@ function AppContent() {
     console.log("handleNotificationClick_notification",notification)
     // Mark as read when clicked
     if (notification.unread) {
-      await markNotificationAsReadOnServer(notification.id || notification._id);
+      markNotificationAsReadOnServer(notification.id || notification._id);
     }
 
     // Handle navigation based on notification type using navigation store
@@ -190,7 +190,7 @@ function AppContent() {
       setActiveSection('campaigns');
     } else if (notification.data?.deviceId) {
       setActiveSection('devices');
-    } else if (notification.type === 'info' && notification.title.includes('Message')) {
+    } else if (notification.type === 'info' && notification.title.includes('SMS')) {
       setActiveSection('inbox');
     } else if (notification.data?.section) {
       // If notification has a specific section defined, use that
