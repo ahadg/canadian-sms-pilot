@@ -288,7 +288,7 @@ export function Dashboard() {
                 )}
               </div>
 
-              <Button variant="outline" className="w-full">
+              <Button  onClick={() => setActiveSection('campaigns')} variant="outline" className="w-full">
                 <Plus className="h-4 w-4 mr-2" />
                 View All Campaigns
               </Button>

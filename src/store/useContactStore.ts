@@ -135,15 +135,15 @@ export const useContactStore = create<ContactState>((set, get) => ({
     const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) throw new Error('User not authenticated');
     if (!contactListId) throw new Error('Contact list ID is required');
-
+  
     try {
       set({ loading: true });
       
       const params: any = {
         page: filters.page || 1,
-        limit: filters.limit || 5000
+        limit: filters.limit || 50 // Reduced from 5000 to reasonable default
       };
-
+  
       if (filters.optedIn !== undefined) {
         params.optedIn = filters.optedIn;
       }
@@ -151,7 +151,12 @@ export const useContactStore = create<ContactState>((set, get) => ({
       if (filters.status) {
         params.status = filters.status;
       }
-
+  
+      // Add search to API call if provided
+      if (filters.search) {
+        params.search = filters.search;
+      }
+  
       const response = await contactAPI.getContacts(contactListId, params);
       const contactsData = response.data.contacts || [];
       
@@ -161,7 +166,7 @@ export const useContactStore = create<ContactState>((set, get) => ({
           currentPage: response.data.currentPage || 1,
           totalPages: response.data.totalPages || 1,
           total: response.data.total || 0,
-          limit: response.data.limit || 5000
+          limit: response.data.limit || params.limit
         },
       });
       
@@ -174,7 +179,33 @@ export const useContactStore = create<ContactState>((set, get) => ({
       set({ loading: false });
     }
   },
-
+  
+  // Update searchContacts to work with pagination
+  // searchContacts: (query: string, filters: ContactFilters = {}): Contact[] => {
+  //   const { contacts } = get();
+    
+  //   // If we have a search query, filter locally from currently loaded contacts
+  //   // For large datasets, you should use API search instead
+  //   if (!query.trim()) {
+  //     return contacts; // Return all loaded contacts when no search
+  //   }
+  
+  //   const searchTerm = query.toLowerCase().trim();
+    
+  //   return contacts.filter(contact => {
+  //     const matchesSearch = 
+  //       contact.phoneNumber?.toLowerCase().includes(searchTerm) ||
+  //       contact.firstName?.toLowerCase().includes(searchTerm) ||
+  //       contact.lastName?.toLowerCase().includes(searchTerm) ||
+  //       contact.email?.toLowerCase().includes(searchTerm) ||
+  //       `${contact.firstName || ''} ${contact.lastName || ''}`.toLowerCase().includes(searchTerm);
+  
+  //     const matchesOptedIn = filters.optedIn === undefined || contact.optedIn === filters.optedIn;
+  //     const matchesStatus = !filters.status || contact.status === filters.status;
+  
+  //     return matchesSearch && matchesOptedIn && matchesStatus;
+  //   });
+  // },
   createContactList: async (name: string, description?: string): Promise<ContactList> => {
     const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) throw new Error('User not authenticated');
@@ -203,6 +234,7 @@ export const useContactStore = create<ContactState>((set, get) => ({
     if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
+      console.log("updates",updates)
       const response = await contactAPI.updateList(id, updates);
       const updatedList = response.data.contactList;
       
@@ -277,6 +309,7 @@ export const useContactStore = create<ContactState>((set, get) => ({
     if (!isAuthenticated) throw new Error('User not authenticated');
 
     try {
+      console.log("updateContact",{contactId,updates})
       const response = await contactAPI.updateContact(contactId, updates);
       const updatedContact = response.data.contact;
       
