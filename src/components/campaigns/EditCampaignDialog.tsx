@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Send, Smartphone, Calendar, Play, Clock } from "lucide-react";
+import { Loader2, Send, Smartphone, Calendar, Play, Clock, RotateCcw } from "lucide-react";
 import { Campaign } from "@/lib/api/campaign";
 import { Device } from "@/hooks/useCampaigns";
 import { useContactStore } from "@/store/useContactStore";
@@ -183,7 +183,10 @@ export function EditCampaignDialog({
 
   const handleSave = async () => {
     if (!campaign) return;
-
+  
+    // Check if this is a restart operation
+    const isRestart = editForm.status === 'restart';
+  
     // Prepare task settings based on message variation type
     const finalTaskSettings = {
       ...taskSettings,
@@ -195,17 +198,28 @@ export function EditCampaignDialog({
       selectedVariantId: messageVariationType === "multiple_variants" ? selectedVariantId : null,
       messageVariationType,
     };
-
+  
     const updates = {
       name: editForm.name,
       messageContent: editForm.message_content,
       contactList: editForm.contactList || undefined,
-      status: editForm.status,
+      status: isRestart ? 'scheduled' : editForm.status, // Set to scheduled for restart
       device: editForm.device,
       taskSettings: finalTaskSettings,
       message: selectedAIMessage?._id || null,
+      // Reset statistics if restarting
+      ...(isRestart && {
+        sentMessages: 0,
+        sentMessagesToday: 0,
+        deliveredMessages: 0,
+        failedMessages: 0,
+        deliveryRate: 0,
+        sentCount: 0,
+        completedAt: null,
+        processingStartedAt: null
+      })
     };
-
+  
     await onSave(campaign._id, updates);
   };
 
@@ -482,39 +496,46 @@ export function EditCampaignDialog({
           />
 
           {/* Schedule Settings */}
-          {/* <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="editStatus">Campaign Status</Label>
-              <Select 
-                value={editForm.status}
-                onValueChange={(value) => setEditForm(prev => ({ ...prev, status: value as Campaign['status'] }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="paused">
+          <div>
+            <Label htmlFor="editStatus">Campaign Status</Label>
+            <Select 
+              value={editForm.status}
+              onValueChange={(value) => setEditForm(prev => ({ ...prev, status: value as Campaign['status'] }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="paused">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Keep Paused
+                  </div>
+                </SelectItem>
+                <SelectItem value="active">
+                  <div className="flex items-center gap-2">
+                    <Play className="h-4 w-4" />
+                    Resume Campaign
+                  </div>
+                </SelectItem>
+                <SelectItem value="scheduled">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Schedule for Later
+                  </div>
+                </SelectItem>
+                {/* Add restart option for completed campaigns */}
+                {campaign?.status === 'completed' && (
+                  <SelectItem value="restart">
                     <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      Keep Paused
+                      <RotateCcw className="h-4 w-4" />
+                      Restart Campaign (Reset Stats)
                     </div>
                   </SelectItem>
-                  <SelectItem value="active">
-                    <div className="flex items-center gap-2">
-                      <Play className="h-4 w-4" />
-                      Resume Campaign
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="scheduled">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      Schedule for Later
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div> */}
+                )}
+              </SelectContent>
+            </Select>
+          </div>
 
           {/* Sending Interval Section */}
           <div className="border-t pt-4">
