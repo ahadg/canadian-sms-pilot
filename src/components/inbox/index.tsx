@@ -19,11 +19,29 @@ import {
   ArrowLeft,
   Phone,
   PhoneIcon,
-  PhoneOffIcon
+  PhoneOffIcon,
+  X
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useMessagesStore, decodeBase64, ReceivedSMS } from "@/store/useMessagesStore";
 import { toast } from "sonner";
+const safeLower = (v: unknown) => (typeof v === "string" ? v.toLowerCase() : "");
+
+const safeDecode = (b64?: string) => {
+  try {
+    return b64 ? decodeBase64(b64) ?? "" : "";
+  } catch {
+    return "";
+  }
+};
+
+const normalizeTs = (ts: string | number | Date | undefined) => {
+  if (!ts) return new Date(0);
+  if (ts instanceof Date) return ts;
+  const n = typeof ts === "number" ? ts : Date.parse(String(ts));
+  return isNaN(n) ? new Date(0) : new Date(n);
+};
+
 
 const STATUS_OPTIONS = ['all', 'delivered', 'read', 'replied', 'failed'];
 const DIRECTION_OPTIONS = ['all', 'inbound', 'outbound'];
@@ -32,6 +50,7 @@ export function Inbox() {
   const [activeTab, setActiveTab] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
   const [replyText, setReplyText] = useState('');
+  const [conversationSearch, setConversationSearch] = useState(''); // New state for conversation search
   const { isAuthenticated } = useAuthStore();
   
   // Use refs to prevent unnecessary re-renders
@@ -128,106 +147,105 @@ export function Inbox() {
     }
   }, [fetchConversation, markConversationAsRead]);
 
-  const formatDate = useCallback((timestamp: string): string => {
-    const date = new Date(timestamp);
+  const formatDate = useCallback((timestamp: string | number | Date): string => {
+    const date = normalizeTs(timestamp);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
+    if (diffMins < 1) return "Just now";
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
     return date.toLocaleDateString();
   }, []);
-
-  const formatTime = useCallback((timestamp: string): string => {
-    return new Date(timestamp).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  
+  const formatTime = useCallback((timestamp: string | number | Date): string => {
+    return normalizeTs(timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   }, []);
 
-  // Filter conversations based on active tab and filters
+  // Clear conversation search
+  const clearConversationSearch = useCallback(() => {
+    setConversationSearch('');
+  }, []);
+
+  // Filter conversations based on active tab, filters, and search
   const filteredConversations = useMemo(() => {
-    let filtered = conversations;
-
-    // Filter by active tab
+    let filtered = conversations ?? [];
+  
+    // Active tab
     switch (activeTab) {
-      case 'unread':
-        filtered = filtered.filter(conv => conv.unreadCount > 0);
+      case "unread":
+        filtered = filtered.filter((c) => (c.unreadCount ?? 0) > 0);
         break;
-      case 'inbound':
-        filtered = filtered.filter(conv => conv.lastDirection === 'inbound');
+      case "inbound":
+        filtered = filtered.filter((c) => c.lastDirection === "inbound");
         break;
-      case 'outbound':
-        filtered = filtered.filter(conv => conv.lastDirection === 'outbound');
+      case "outbound":
+        filtered = filtered.filter((c) => c.lastDirection === "outbound");
         break;
-      case 'all':
       default:
-        // No additional filtering for 'all'
         break;
     }
-
-    // Apply search filter
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase();
-      filtered = filtered.filter(conv => 
-        conv.phoneNumber?.toLowerCase().includes(searchLower) ||
-        decodeBase64(conv.lastMessage)?.toLowerCase().includes(searchLower) ||
-        conv.contact?.firstName?.toLowerCase().includes(searchLower) ||
-        conv.contact?.lastName?.toLowerCase().includes(searchLower) ||
-        `${conv.contact?.firstName || ''} ${conv.contact?.lastName || ''}`.toLowerCase().includes(searchLower)
+  
+    const boxSearch = safeLower(conversationSearch.trim());
+    const globalSearch = safeLower((filters.search ?? "").trim());
+  
+    const matchesSearch = (conv: any, q: string) => {
+      if (!q) return true;
+      const lastMsg = safeDecode(conv.lastMessage);
+      const phone = safeLower(conv.phoneNumber);
+      const first = safeLower(conv.contact?.firstName);
+      const last = safeLower(conv.contact?.lastName);
+      const full = safeLower(`${conv.contact?.firstName || ""} ${conv.contact?.lastName || ""}`);
+      return (
+        phone.includes(q) ||
+        lastMsg.includes(q) ||
+        first.includes(q) ||
+        last.includes(q) ||
+        full.includes(q)
       );
-    }
-
-    // Apply status filter
-    if (filters.status !== 'all') {
+    };
+  
+    // Apply both search inputs (AND)
+    if (boxSearch) filtered = filtered.filter((c) => matchesSearch(c, boxSearch));
+    if (globalSearch) filtered = filtered.filter((c) => matchesSearch(c, globalSearch));
+  
+    // Status
+    if (filters.status && filters.status !== "all") {
       switch (filters.status) {
-        case 'read':
-          filtered = filtered.filter(conv => conv.unreadCount === 0);
+        case "read":
+          filtered = filtered.filter((c) => (c.unreadCount ?? 0) === 0);
           break;
-        case 'delivered':
-          // For conversations, we might consider all as delivered since they're in the list
-          break;
-        case 'replied':
-          filtered = filtered.filter(conv => conv.lastDirection === 'outbound');
-          break;
-        case 'failed':
-          // You might need to track failed messages in your conversation data
+        case "replied":
+          filtered = filtered.filter((c) => c.lastDirection === "outbound");
           break;
         default:
           break;
       }
     }
-
-    // Apply direction filter
-    if (filters.direction !== 'all') {
-      filtered = filtered.filter(conv => 
-        filters.direction === 'inbound' ? 
-          conv.lastDirection === 'inbound' : 
-          conv.lastDirection === 'outbound'
+  
+    // Direction
+    if (filters.direction && filters.direction !== "all") {
+      filtered = filtered.filter((c) =>
+        filters.direction === "inbound" ? c.lastDirection === "inbound" : c.lastDirection === "outbound"
       );
     }
-
-    // Apply date filters
+  
+    // Dates
     if (filters.dateFrom) {
-      const fromDate = new Date(filters.dateFrom);
-      fromDate.setHours(0, 0, 0, 0); // Start of the day
-      filtered = filtered.filter(conv => new Date(conv.lastTimestamp) >= fromDate);
+      const from = normalizeTs(filters.dateFrom); from.setHours(0,0,0,0);
+      filtered = filtered.filter((c) => normalizeTs(c.lastTimestamp) >= from);
     }
-
     if (filters.dateTo) {
-      const toDate = new Date(filters.dateTo);
-      toDate.setHours(23, 59, 59, 999); // End of the day
-      filtered = filtered.filter(conv => new Date(conv.lastTimestamp) <= toDate);
+      const to = normalizeTs(filters.dateTo); to.setHours(23,59,59,999);
+      filtered = filtered.filter((c) => normalizeTs(c.lastTimestamp) <= to);
     }
-
-    return filtered;
-  }, [conversations, activeTab, filters]);
-
+  
+    return filtered; // ← keep as-is; no dedupe
+  }, [conversations, activeTab, filters.status, filters.direction, filters.dateFrom, filters.dateTo, filters.search, conversationSearch]);
+  
   // Effects with proper dependencies
   useEffect(() => {
     if (isAuthenticated) {
@@ -465,6 +483,25 @@ export function Inbox() {
                   {filteredConversations.length}
                 </Badge>
               </CardTitle>
+              
+              {/* Conversation Search Input */}
+              <div className="relative mt-2">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by phone number or message..."
+                  value={conversationSearch}
+                  onChange={(e) => setConversationSearch(e.target.value)}
+                  className="pl-9 pr-9"
+                />
+                {conversationSearch && (
+                  <button
+                    onClick={clearConversationSearch}
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -486,8 +523,18 @@ export function Inbox() {
                   <div className="p-8 text-center">
                     <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground" />
                     <p className="text-sm text-muted-foreground mt-2">
-                      {conversations.length === 0 ? 'No conversations found' : 'No conversations match your filters'}
+                      {conversations.length === 0 ? 'No conversations found' : 'No conversations match your search/filters'}
                     </p>
+                    {conversationSearch && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={clearConversationSearch}
+                        className="mt-2"
+                      >
+                        Clear Search
+                      </Button>
+                    )}
                     {conversations.length === 0 && selectedDevice && (
                       <Button 
                         variant="outline" 
@@ -503,17 +550,20 @@ export function Inbox() {
                       <Button 
                         variant="outline" 
                         size="sm" 
-                        onClick={clearFilters}
+                        onClick={() => {
+                          clearFilters();
+                          clearConversationSearch();
+                        }}
                         className="mt-2"
                       >
-                        Clear Filters
+                        Clear All Filters
                       </Button>
                     )}
                   </div>
                 ) : (
-                  filteredConversations.map((conversation) => (
+                  filteredConversations.map((conversation,i) => (
                     <div
-                      key={`${conversation.phoneNumber}-${conversation.port}-${conversation.slot}`}
+                    key={`${conversation.phoneNumber ?? "unknown"}-${conversation.port ?? "p"}-${conversation.slot ?? "s"}::${conversation.simId ?? "nosim"}::${i}`}
                       className={`p-4 border-b cursor-pointer hover:bg-muted/50 transition-colors ${
                         currentConversation?.phoneNumber === conversation.phoneNumber && 
                         currentConversation?.port === conversation.port && 
