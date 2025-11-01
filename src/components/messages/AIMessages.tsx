@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { messageAPI } from "@/lib/api/messages";
+import { toast } from "@/hooks/use-toast";
 
 interface MessageVariant {
   _id?: string;
@@ -301,6 +302,7 @@ export function AIMessages() {
       }
       
       console.log(`${asTemplate ? 'Template' : 'Message'} saved successfully!`);
+      toast({ title: "Success", description: "Saved successfully" });
     } catch (error) {
       console.error('Failed to save:', error);
     } finally {
