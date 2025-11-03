@@ -550,6 +550,19 @@ export function CampaignDetailsDialog({ campaign, isOpen, onClose }: CampaignDet
               </Card>
             </div>
 
+          {campaign.taskSettings?.timeRestrictions?.enabled && (
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Time Restrictions
+              </h4>
+              <div className="text-sm text-muted-foreground">
+                <div>Sending allowed between: {campaign.taskSettings.timeRestrictions.startHour}:00 - {campaign.taskSettings.timeRestrictions.endHour}:00</div>
+                <div>Timezone: {campaign.taskSettings.timeRestrictions.timezone}</div>
+              </div>
+            </div>
+          )}
+
             {/* Progress Bar */}
             <Card>
               <CardContent className="p-4">

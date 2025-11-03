@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Send, Plus, Play, Pause, StopCircle, CirclePlay, Eye, Loader2, AlertTriangle, RotateCcw, Zap } from "lucide-react";
+import { Send, Plus, Play, Pause, StopCircle, CirclePlay, Eye, Loader2, AlertTriangle, RotateCcw, Zap, Clock } from "lucide-react";
 import { Campaign } from "@/lib/api/campaign";
 import { getStatusBadge } from "./utils";
 import { Edit } from "lucide-react";
@@ -116,6 +116,23 @@ export function CampaignTable({
                                   Resuming
                                 </Badge>
                               )}
+                                {/* Add Time Restrictions Badge */}
+                               {campaign.taskSettings?.timeRestrictions?.enabled && (
+                                  <Badge variant="outline" className="flex items-center gap-1 px-2 py-0.5 text-xs border-blue-200 text-blue-700 bg-blue-50">
+                                    <Clock className="h-3 w-3" />
+                                    {campaign.taskSettings.timeRestrictions.startHour === 0 ? '12AM' : 
+                                    campaign.taskSettings.timeRestrictions.startHour === 12 ? '12PM' : 
+                                    campaign.taskSettings.timeRestrictions.startHour < 12 ? 
+                                      `${campaign.taskSettings.timeRestrictions.startHour}AM` : 
+                                      `${campaign.taskSettings.timeRestrictions.startHour - 12}PM`}
+                                    -
+                                    {campaign.taskSettings.timeRestrictions.endHour === 0 ? '12AM' : 
+                                    campaign.taskSettings.timeRestrictions.endHour === 12 ? '12PM' : 
+                                    campaign.taskSettings.timeRestrictions.endHour < 12 ? 
+                                      `${campaign.taskSettings.timeRestrictions.endHour}AM` : 
+                                      `${campaign.taskSettings.timeRestrictions.endHour - 12}PM`}
+                                  </Badge>
+                                )}
                             </div>
                           )}
                         </div>

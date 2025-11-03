@@ -45,6 +45,7 @@ import { CampaignStats } from "./CampaignStats";
 import { CampaignTable } from "./CampaignTable";
 import { MessageVariationSection } from "./MessageVariationSection";
 import { EditCampaignDialog } from "./EditCampaignDialog";
+import {  Sun, Moon } from "lucide-react";
 
 // Canadian SMS rules template
 const CANADIAN_SMS_TEMPLATE = `Your message here. Reply STOP to unsubscribe.`;
@@ -65,7 +66,13 @@ const defaultTaskSettings = {
   //dailyMessageLimit: 300,
   messageVariantType: "static" as "static" | "ai_random",
   useAiGeneration: false,
-  aiPrompt: ""
+  aiPrompt: "",
+  timeRestrictions: {
+    enabled: false,
+    startHour: 9,
+    endHour: 17,
+    timezone: 'America/Toronto'
+  }
 };
 
 // Message variation types
@@ -98,6 +105,38 @@ export function CampaignManagement() {
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [updatingCampaign, setUpdatingCampaign] = useState(false);
+
+  const [timeRestrictions, setTimeRestrictions] = useState({
+    enabled: false,
+    startHour: 9,
+    endHour: 17,
+    timezone: 'America/Toronto'
+  });
+
+  const resetCreateForm = () => {
+    setCampaignForm({
+      name: '',
+      message_content: CANADIAN_SMS_TEMPLATE,
+      contactList: '',
+      status: 'scheduled',
+      device: devices.length > 0 ? devices[0].id : ''
+    });
+    setTaskSettings(defaultTaskSettings);
+    setSelectedMessageId('');
+    setSelectedAIMessage(null);
+    setSelectedVariantId('');
+    setMessageVariants([]);
+    setMessageVariationType('single_variant');
+    setCustomMessageContent(CANADIAN_SMS_TEMPLATE);
+    setSendingInterval({ min: 30000, max: 90000 });
+    // Reset time restrictions
+    setTimeRestrictions({
+      enabled: false,
+      startHour: 9,
+      endHour: 17,
+      timezone: 'America/Toronto'
+    });
+  };
 
   // Add this handler function
   const handleEditCampaign = (campaign: Campaign) => {
@@ -475,89 +514,70 @@ const handleRevertToOriginal = () => {
 
   // Create campaign handler
   const handleCreateCampaign = async () => {
-    if (!campaignForm.name || !campaignForm.message_content || !campaignForm.device) {
-      toast.error('Please fill in all required fields including device selection');
-      return;
-    }
-    setIsCreatingCampaign(true); // Start loading
-    try {
-      const { data: contacts_lists, error: contactsError } = await contactAPI.getListById(campaignForm.contactList);
-      console.log("contacts_lists", campaignForm.contactList, contacts_lists);
-      
-      // Prepare task settings based on message variation type
-      const finalTaskSettings = {
-        ...taskSettings,
-        //messageVariantType: messageVariationType === "ai_random" ? "ai_random" : "static",
-        //dailyMessageLimit,
-        interval_min: sendingInterval.min,
-        interval_max: sendingInterval.max,
-        useAiGeneration: messageVariationType === "ai_random",
-        aiPrompt: messageVariationType === "ai_random" && selectedAIMessage ? selectedAIMessage.originalPrompt : "",
-        baseMessage: messageVariationType === "ai_random" && selectedAIMessage ? selectedAIMessage.baseMessage : "",
-        selectedVariantId: messageVariationType === "multiple_variants" ? selectedVariantId : null,
-        messageVariationType,
-        message: selectedAIMessage?._id || null
-      };
+  if (!campaignForm.name || !campaignForm.message_content || !campaignForm.device) {
+    toast.error('Please fill in all required fields including device selection');
+    return;
+  }
+  setIsCreatingCampaign(true);
+  try {
+    const { data: contacts_lists, error: contactsError } = await contactAPI.getListById(campaignForm.contactList);
+    console.log("contacts_lists", campaignForm.contactList, contacts_lists);
+    
+    // Prepare task settings including time restrictions
+    const finalTaskSettings = {
+      ...taskSettings,
+      interval_min: sendingInterval.min,
+      interval_max: sendingInterval.max,
+      useAiGeneration: messageVariationType === "ai_random",
+      aiPrompt: messageVariationType === "ai_random" && selectedAIMessage ? selectedAIMessage.originalPrompt : "",
+      baseMessage: messageVariationType === "ai_random" && selectedAIMessage ? selectedAIMessage.baseMessage : "",
+      selectedVariantId: messageVariationType === "multiple_variants" ? selectedVariantId : null,
+      messageVariationType,
+      message: selectedAIMessage?._id || null,
+      // Add time restrictions
+      timeRestrictions: timeRestrictions.enabled ? timeRestrictions : undefined
+    };
 
-      const campaignData = {
-        name: campaignForm.name,
-        messageContent: campaignForm.message_content,
-        contactList: campaignForm.contactList || undefined,
-        // priority: campaignForm.priority,
-        status: campaignForm.status,
-        device: campaignForm.device,
-        taskSettings: finalTaskSettings,
-        totalContacts: contacts_lists?.contactList?.totalContacts || 0,
-        sentMessages: 0,
-        deliveredMessages: 0,
-        failedMessages: 0,
-        // Include message reference for AI campaigns
-        message: selectedAIMessage?._id
-      };
+    const campaignData = {
+      name: campaignForm.name,
+      messageContent: campaignForm.message_content,
+      contactList: campaignForm.contactList || undefined,
+      status: campaignForm.status,
+      device: campaignForm.device,
+      taskSettings: finalTaskSettings,
+      totalContacts: contacts_lists?.contactList?.totalContacts || 0,
+      sentMessages: 0,
+      deliveredMessages: 0,
+      failedMessages: 0,
+      message: selectedAIMessage?._id
+    };
 
-      console.log("Creating campaign with data:", campaignData);
-      
-      const newCampaign = await createCampaign(campaignData);
-      
-      // Start processing if status is active
-      if (campaignForm.status === 'active') {
-        try {
-          await startCampaignProcessing(newCampaign._id);
-          toast.success('Campaign created and started successfully');
-        } catch (error) {
-          console.error('Error starting campaign processing:', error);
-          toast.error('Campaign created but failed to start processing');
-        }
-      } else {
-        toast.success('Campaign created successfully');
+    console.log("Creating campaign with data:", campaignData);
+    
+    const newCampaign = await createCampaign(campaignData);
+    
+    // Start processing if status is active
+    if (campaignForm.status === 'active') {
+      try {
+        await startCampaignProcessing(newCampaign._id);
+        toast.success('Campaign created and started successfully');
+      } catch (error) {
+        console.error('Error starting campaign processing:', error);
+        toast.error('Campaign created but failed to start processing');
       }
-      
-      setIsCreateCampaignOpen(false);
-      // Reset form
-      setCampaignForm({
-        name: '',
-        message_content: CANADIAN_SMS_TEMPLATE,
-        contactList: '',
-        // priority: 'normal',
-        status: 'scheduled',
-        device: devices.length > 0 ? devices[0].id : ''
-      });
-      setTaskSettings(defaultTaskSettings);
-      setSelectedMessageId('');
-      setSelectedAIMessage(null);
-      setSelectedVariantId('');
-      setMessageVariants([]);
-      setMessageVariationType('single_variant');
-      setCustomMessageContent(CANADIAN_SMS_TEMPLATE);
-      //setDailyMessageLimit(300);
-      setSendingInterval({ min: 30000, max: 90000 });
-      
-    } catch (error) {
-      console.error('Error creating campaign:', error);
-      toast.error('Failed to create campaign');
+    } else {
+      toast.success('Campaign created successfully');
     }
-    setIsCreatingCampaign(false); // Start loading
-  };
+    
+    setIsCreateCampaignOpen(false);
+    resetCreateForm(); // Use the reset function
+      
+  } catch (error) {
+    console.error('Error creating campaign:', error);
+    toast.error('Failed to create campaign');
+  }
+  setIsCreatingCampaign(false);
+};
 
   // Handle campaign actions with loading states
   const handleStartCampaign = async (campaignId: string) => {
@@ -878,6 +898,133 @@ const handleRevertToOriginal = () => {
                   </div>
                   <div className="text-xs text-muted-foreground mt-2">
                     Messages will be sent with random intervals between {sendingInterval.min / 1000}s and {sendingInterval.max / 1000}s
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <h3 className="font-medium mb-3 flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Time Restrictions (Optional)
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        checked={timeRestrictions.enabled}
+                        onCheckedChange={(checked) => setTimeRestrictions(prev => ({ 
+                          ...prev, 
+                          enabled: checked 
+                        }))}
+                      />
+                      <Label htmlFor="timeRestrictions" className="text-sm font-medium">
+                        Restrict sending to specific hours
+                      </Label>
+                    </div>
+
+                    {timeRestrictions.enabled && (
+                      <div className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/50">
+                        <div>
+                          <Label htmlFor="startHour" className="flex items-center gap-2 mb-2">
+                            <Sun className="h-4 w-4" />
+                            Start Time
+                          </Label>
+                          <Select 
+                            value={timeRestrictions.startHour.toString()}
+                            onValueChange={(value) => setTimeRestrictions(prev => ({ 
+                              ...prev, 
+                              startHour: parseInt(value) 
+                            }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select start hour" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 24 }, (_, i) => (
+                                <SelectItem key={i} value={i.toString()}>
+                                  {i === 0 ? '12 AM' : 
+                                  i === 12 ? '12 PM' : 
+                                  i < 12 ? `${i} AM` : `${i - 12} PM`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label htmlFor="endHour" className="flex items-center gap-2 mb-2">
+                            <Moon className="h-4 w-4" />
+                            End Time
+                          </Label>
+                          <Select 
+                            value={timeRestrictions.endHour.toString()}
+                            onValueChange={(value) => setTimeRestrictions(prev => ({ 
+                              ...prev, 
+                              endHour: parseInt(value) 
+                            }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select end hour" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 24 }, (_, i) => (
+                                <SelectItem key={i} value={i.toString()}>
+                                  {i === 0 ? '12 AM' : 
+                                  i === 12 ? '12 PM' : 
+                                  i < 12 ? `${i} AM` : `${i - 12} PM`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="col-span-2">
+                          <Label htmlFor="timezone" className="mb-2">Timezone</Label>
+                          <Select 
+                            value={timeRestrictions.timezone}
+                            onValueChange={(value) => setTimeRestrictions(prev => ({ 
+                              ...prev, 
+                              timezone: value 
+                            }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select timezone" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="America/Toronto">Eastern Time (Toronto)</SelectItem>
+                              <SelectItem value="America/Vancouver">Pacific Time (Vancouver)</SelectItem>
+                              <SelectItem value="America/Edmonton">Mountain Time (Edmonton)</SelectItem>
+                              <SelectItem value="America/Winnipeg">Central Time (Winnipeg)</SelectItem>
+                              <SelectItem value="America/Halifax">Atlantic Time (Halifax)</SelectItem>
+                              <SelectItem value="America/St_Johns">Newfoundland Time</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="col-span-2">
+                          <div className="text-sm text-muted-foreground p-3 bg-background rounded border">
+                            <div className="font-medium mb-1">Sending Schedule:</div>
+                            <div>
+                              Messages will only be sent between{' '}
+                              <span className="font-semibold">
+                                {timeRestrictions.startHour === 0 ? '12 AM' : 
+                                timeRestrictions.startHour === 12 ? '12 PM' : 
+                                timeRestrictions.startHour < 12 ? `${timeRestrictions.startHour} AM` : `${timeRestrictions.startHour - 12} PM`}
+                              </span>{' '}
+                              and{' '}
+                              <span className="font-semibold">
+                                {timeRestrictions.endHour === 0 ? '12 AM' : 
+                                timeRestrictions.endHour === 12 ? '12 PM' : 
+                                timeRestrictions.endHour < 12 ? `${timeRestrictions.endHour} AM` : `${timeRestrictions.endHour - 12} PM`}
+                              </span>{' '}
+                              ({timeRestrictions.timezone})
+                            </div>
+                            <div className="mt-1 text-xs">
+                              Campaign will automatically pause outside these hours and resume during allowed times.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
