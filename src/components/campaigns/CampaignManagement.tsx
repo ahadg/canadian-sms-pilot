@@ -588,7 +588,7 @@ const handleRevertToOriginal = () => {
       //toast.success('Campaign started successfully');
     } catch (error) {
       console.error('Error starting campaign:', error);
-      toast.error('Failed to start campaign');
+      toast.error(error.message || 'Failed to start campaign');
     } finally {
       setLoadingActions(prev => ({ ...prev, [campaignId]: null }));
     }
@@ -901,7 +901,7 @@ const handleRevertToOriginal = () => {
                   </div>
                 </div>
 
-                <div className="border-t pt-4">
+                {/* <div className="border-t pt-4">
                   <h3 className="font-medium mb-3 flex items-center gap-2">
                     <Clock className="h-4 w-4" />
                     Time Restrictions (Optional)
@@ -1026,7 +1026,7 @@ const handleRevertToOriginal = () => {
                       </div>
                     )}
                   </div>
-                </div>
+                </div> */}
 
                 {/* Advanced Task Settings */}
                 <div className="border-t pt-4">
