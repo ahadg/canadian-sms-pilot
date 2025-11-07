@@ -84,9 +84,7 @@ export function EditCampaignDialog({
     status: 'scheduled' as 'scheduled' | 'active' | 'paused' | 'completed',
     device: '',
   });
-  console.log("editForm",editForm)
-  console.log("editForm_campaign",campaign)
-  console.log("editForm_contact",contactLists)
+
   const [timeRestrictions, setTimeRestrictions] = useState({
     enabled: false,
     startHour: 9,
@@ -165,23 +163,54 @@ export function EditCampaignDialog({
           // Load variants for AI message
           if (campaignVariationType === "multiple_variants" && campaign.taskSettings?.selectedVariantId) {
             loadMessageVariants(campaign.message, campaign.taskSettings.selectedVariantId);
+          } else {
+            // Auto-load variants and select the best one
+            loadMessageVariants(campaign.message);
           }
         }
       }
     }
   }, [campaign, messages]);
 
-  // Load message variants
+  // Load message variants and auto-select the best variant
   const loadMessageVariants = async (messageId: string, presetVariantId?: string) => {
     setLoadingVariants(true);
     try {
       const variants = await onFetchMessageVariants(messageId);
       setMessageVariants(variants);
       
-      if (presetVariantId && variants.find(v => v._id === presetVariantId)) {
-        setSelectedVariantId(presetVariantId);
+      let variantToSelect = presetVariantId;
+
+      // If no preset variant ID, auto-select the best variant
+      if (!variantToSelect && variants.length > 0) {
+        // Strategy: prefer variants with good scores, or just take the first one
+        variantToSelect = findBestVariant(variants)?._id || variants[0]._id;
+      }
+
+      if (variantToSelect && variants.find(v => v._id === variantToSelect)) {
+        setSelectedVariantId(variantToSelect);
+        
+        // Auto-update message content when variant is selected
+        const selectedVariant = variants.find(v => v._id === variantToSelect);
+        if (selectedVariant) {
+          setCustomMessageContent(selectedVariant.content);
+          if (messageVariationType === "multiple_variants") {
+            setEditForm(prev => ({
+              ...prev,
+              message_content: selectedVariant.content
+            }));
+          }
+        }
       } else if (variants.length > 0) {
+        // Fallback: select first variant
         setSelectedVariantId(variants[0]._id);
+        setCustomMessageContent(variants[0].content);
+        if (messageVariationType === "multiple_variants") {
+          setEditForm(prev => ({
+            ...prev,
+            message_content: variants[0].content
+          }));
+        }
       }
     } catch (error) {
       console.error('Error loading message variants:', error);
@@ -189,6 +218,22 @@ export function EditCampaignDialog({
     } finally {
       setLoadingVariants(false);
     }
+  };
+
+  // Helper function to find the best variant based on scoring
+  const findBestVariant = (variants: MessageVariant[]): MessageVariant | null => {
+    if (variants.length === 0) return null;
+
+    // Prefer variants with higher scores if available
+    const scoredVariants = variants.filter(v => v.score != null);
+    if (scoredVariants.length > 0) {
+      return scoredVariants.reduce((best, current) => 
+        (current.score || 0) > (best.score || 0) ? current : best
+      );
+    }
+
+    // Fallback to first variant
+    return variants[0];
   };
 
   const handleSave = async () => {
@@ -234,7 +279,7 @@ export function EditCampaignDialog({
     await onSave(campaign._id, updates);
   };
 
-  // Message selection handler
+  // Message selection handler - FIXED VERSION
   const handleMessageSelect = async (messageId: string) => {
     if (messageId === 'none') {
       setSelectedMessageId('');
@@ -254,17 +299,30 @@ export function EditCampaignDialog({
     const selectedMessage = messages.find((msg: SavedMessage) => msg._id === messageId);
     setSelectedAIMessage(selectedMessage || null);
     
-    // Load variants for the selected message
+    // Auto-switch to multiple variants mode when AI message is selected
+    setMessageVariationType("multiple_variants");
+    
+    // Load variants and auto-select the best one
     await loadMessageVariants(messageId);
+
+    // Immediately update the form with base message content as fallback
+    if (selectedMessage?.baseMessage) {
+      setCustomMessageContent(selectedMessage.baseMessage);
+      setEditForm(prev => ({
+        ...prev,
+        message_content: selectedMessage.baseMessage
+      }));
+    }
   };
 
-  // Variant selection handler
+  // Variant selection handler - FIXED to always update message content
   const handleVariantSelect = (variantId: string) => {
     setSelectedVariantId(variantId);
     
     const selectedVariant = messageVariants.find(v => v._id === variantId);
     if (selectedVariant) {
       setCustomMessageContent(selectedVariant.content);
+      // Always update the form message content when variant changes
       setEditForm(prev => ({
         ...prev,
         message_content: selectedVariant.content
@@ -272,64 +330,81 @@ export function EditCampaignDialog({
     }
   };
 
-  // Message variation type change handler
+  // Message variation type change handler - FIXED VERSION
   const handleVariationTypeChange = (type: MessageVariationType) => {
     setMessageVariationType(type);
     
     // Update campaign form based on selection
     if (type === "single_variant") {
+      // Use custom message content
       setEditForm(prev => ({
         ...prev,
         message_content: customMessageContent
       }));
-    } else if (type === "multiple_variants" && selectedVariantId) {
+    } else if (type === "multiple_variants") {
+      // Use selected variant content, or base message as fallback
       const selectedVariant = messageVariants.find(v => v._id === selectedVariantId);
-      if (selectedVariant) {
-        setEditForm(prev => ({
-          ...prev,
-          message_content: selectedVariant.content
-        }));
-      }
-    } else if (type === "ai_random" && selectedAIMessage) {
+      const contentToUse = selectedVariant?.content || selectedAIMessage?.baseMessage || customMessageContent;
+      
       setEditForm(prev => ({
         ...prev,
-        message_content: selectedAIMessage.originalPrompt || selectedAIMessage.baseMessage || ""
+        message_content: contentToUse
       }));
+      
+      // Update custom message content to match
+      setCustomMessageContent(contentToUse);
+    } else if (type === "ai_random" && selectedAIMessage) {
+      // Use AI random generation - show original prompt in preview
+      const contentToUse = selectedAIMessage.originalPrompt || selectedAIMessage.baseMessage || customMessageContent;
+      setEditForm(prev => ({
+        ...prev,
+        message_content: contentToUse
+      }));
+      setCustomMessageContent(contentToUse);
     }
   };
 
-  // Custom message content change handler
+  // Custom message content change handler - FIXED to handle all variation types
   const handleCustomMessageChange = (content: string) => {
     setCustomMessageContent(content);
+    
+    // Update form message content based on current variation type
     if (messageVariationType === "single_variant") {
       setEditForm(prev => ({
         ...prev,
         message_content: content
       }));
     }
+    // For other types, the form content is managed by variant/ai selection
   };
 
-  // Use base message handler
+  // Use base message handler - FIXED to update form content
   const handleUseBaseMessage = () => {
     if (selectedAIMessage?.baseMessage) {
-      setCustomMessageContent(selectedAIMessage.baseMessage);
-      if (messageVariationType === "single_variant") {
+      const baseMessage = selectedAIMessage.baseMessage;
+      setCustomMessageContent(baseMessage);
+      
+      // Update form content based on current variation type
+      if (messageVariationType === "single_variant" || messageVariationType === "ai_random") {
         setEditForm(prev => ({
           ...prev,
-          message_content: selectedAIMessage.baseMessage
+          message_content: baseMessage
         }));
       }
     }
   };
 
-  // Use original prompt handler
+  // Use original prompt handler - FIXED to update form content
   const handleUseOriginalPrompt = () => {
     if (selectedAIMessage?.originalPrompt) {
-      setCustomMessageContent(selectedAIMessage.originalPrompt);
-      if (messageVariationType === "single_variant") {
+      const originalPrompt = selectedAIMessage.originalPrompt;
+      setCustomMessageContent(originalPrompt);
+      
+      // Update form content based on current variation type
+      if (messageVariationType === "single_variant" || messageVariationType === "ai_random") {
         setEditForm(prev => ({
           ...prev,
-          message_content: selectedAIMessage.originalPrompt
+          message_content: originalPrompt
         }));
       }
     }
@@ -826,8 +901,6 @@ export function EditCampaignDialog({
                 <Label htmlFor="editDr" className="text-sm">DR Report</Label>
               </div>
             </div>
-
-         
           </div>
 
           {/* Action Buttons */}

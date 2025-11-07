@@ -40,11 +40,16 @@ import {
   History,
   X,
   IdCard,
+  Send
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { EjoinAPIService } from "../../lib/api/devices";
 import { authFetch } from "@/lib/api";
+// Add these imports
+import { Textarea } from "@/components/ui/textarea";
+import { useMessagesStore } from "@/store/useMessagesStore";
+
 
 interface Device {
   _id: string;
@@ -67,6 +72,16 @@ interface Device {
   updated_at: string;
   dailyLimit: number;
   ipAddress: string;
+}
+
+// Add these interfaces
+interface SendSMSDialogState {
+  open: boolean;
+  device: Device | null;
+  port: number | null;
+  slot: number | null;
+  phoneNumber: string;
+  message: string;
 }
 
 interface SIMCard {
@@ -132,6 +147,18 @@ export function DeviceManagement() {
     { name: "Minutes", command: "*103#" },
     { name: "My Number", command: "*1#" },
   ]);
+  const [sendSMSDialog, setSendSMSDialog] = useState<SendSMSDialogState>({
+    open: false,
+    device: null,
+    port: null,
+    slot: null,
+    phoneNumber: '',
+    message: ''
+  });
+  
+  // Get the sendSMS function from your store
+  const { sendSMS } = useMessagesStore();
+  const [isSendingSMS, setIsSendingSMS] = useState(false);
 
   useEffect(() => {
     loadDevices();
@@ -842,6 +869,27 @@ export function DeviceManagement() {
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  console.log("sim",sim)
+                                  setSendSMSDialog({
+                                    open: true,
+                                    device: selectedDevice,
+                                    port: parseInt(sim.port),
+                                    slot: sim.slot || 1, // Use slotId or default to 1
+                                    phoneNumber: sim.phoneNumber || '',
+                                    message: ''
+                                  });
+                                }}
+                                disabled={!sim.inserted || sim.status !== 'active'}
+                                className="h-8 w-8 p-0"
+                                title="Send SMS"
+                              >
+                                <Send className="h-3 w-3" />
+                              </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -1200,6 +1248,162 @@ export function DeviceManagement() {
                 <p className="text-muted-foreground">No USSD command history available</p>
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send SMS Dialog */}
+      <Dialog open={sendSMSDialog.open} onOpenChange={(open) => {
+        if (!open) {
+          setSendSMSDialog({
+            open: false,
+            device: null,
+            port: null,
+            slot: null,
+            phoneNumber: '',
+            message: ''
+          });
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5" />
+              Send SMS Message
+            </DialogTitle>
+            <DialogDescription>
+              Send SMS to {sendSMSDialog.phoneNumber || `Port ${sendSMSDialog.port}`} on {sendSMSDialog.device?.name}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* Phone Number Input */}
+            <div>
+              <Label htmlFor="smsPhoneNumber">Phone Number</Label>
+              <Input
+                id="smsPhoneNumber"
+                placeholder="Enter phone number (e.g., +1234567890)"
+                value={sendSMSDialog.phoneNumber}
+                onChange={(e) => setSendSMSDialog(prev => ({
+                  ...prev,
+                  phoneNumber: e.target.value
+                }))}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {sendSMSDialog.phoneNumber ? `Will send to: ${sendSMSDialog.phoneNumber}` : 'Enter the recipient phone number'}
+              </p>
+            </div>
+
+            {/* Message Textarea */}
+            <div>
+              <Label htmlFor="smsMessage">Message</Label>
+              <Textarea
+                id="smsMessage"
+                placeholder="Type your SMS message here..."
+                value={sendSMSDialog.message}
+                onChange={(e) => setSendSMSDialog(prev => ({
+                  ...prev,
+                  message: e.target.value
+                }))}
+                rows={4}
+                className="resize-none"
+              />
+              <div className="flex justify-between items-center mt-1">
+                <p className="text-xs text-muted-foreground">
+                  {sendSMSDialog.message.length}/160 characters
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Port: {sendSMSDialog.port}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Message Templates */}
+            <div className="space-y-2">
+              <Label className="text-sm">Quick Messages</Label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  "Hello, this is a test message",
+                  "Your verification code is: 123456",
+                  "Service update notification",
+                  "Thank you for your message"
+                ].map((template, index) => (
+                  <Badge
+                    key={index}
+                    variant="outline"
+                    className="px-3 py-1 cursor-pointer hover:bg-blue-100 hover:border-blue-300 transition-colors text-xs"
+                    onClick={() => setSendSMSDialog(prev => ({
+                      ...prev,
+                      message: template
+                    }))}
+                  >
+                    {template.substring(0, 20)}...
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setSendSMSDialog(prev => ({ ...prev, message: '' }))}
+                disabled={!sendSMSDialog.message.trim()}
+                className="flex-1"
+              >
+                Clear
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!sendSMSDialog.device || !sendSMSDialog.port || !sendSMSDialog.phoneNumber.trim() || !sendSMSDialog.message.trim()) {
+                    toast.error('Please fill in all required fields');
+                    return;
+                  }
+
+                  setIsSendingSMS(true);
+                  try {
+                    await sendSMS({
+                      device: sendSMSDialog.device,
+                      port: sendSMSDialog.port,
+                      slot: sendSMSDialog.slot || 1,
+                      to: sendSMSDialog.phoneNumber.trim(),
+                      sms: sendSMSDialog.message.trim()
+                    });
+
+                    // Reset dialog on success
+                    setSendSMSDialog({
+                      open: false,
+                      device: null,
+                      port: null,
+                      slot: null,
+                      phoneNumber: '',
+                      message: ''
+                    });
+
+                    toast.success('SMS sent successfully');
+                  } catch (error) {
+                    console.error('Failed to send SMS:', error);
+                    // Error is handled in the store, no need to show another toast
+                  } finally {
+                    setIsSendingSMS(false);
+                  }
+                }}
+                disabled={!sendSMSDialog.phoneNumber.trim() || !sendSMSDialog.message.trim() || isSendingSMS}
+                className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
+              >
+                {isSendingSMS ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-2" />
+                    Send SMS
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
