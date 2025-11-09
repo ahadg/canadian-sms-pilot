@@ -30,7 +30,8 @@ import {
   Phone,
   User,
   Mail,
-  Filter
+  Filter,
+  Info
 } from "lucide-react";
 import { getStatusBadge } from "./utils";
 import { useState, useEffect } from "react";
@@ -42,11 +43,19 @@ interface CampaignDetailsDialogProps {
   onClose: () => void;
 }
 
+interface StatusHistory {
+  _id: string;
+  status: string;
+  timestamp: string;
+  reason: string;
+  data: any;
+}
+
 interface MessageSentDetail {
   _id: string;
   phoneNumber: string;
   content: string;
-  status:  'sent' | 'delivered' | 'failed' ;
+  status: 'sent' | 'delivered' | 'failed';
   sentAt?: string;
   deliveredAt?: string;
   failedAt?: string;
@@ -63,6 +72,7 @@ interface MessageSentDetail {
     name: string;
     model: string;
   };
+  statusHistory?: StatusHistory[];
 }
 
 interface MessageStats {
@@ -85,6 +95,20 @@ interface MessageStats {
   }>;
 }
 
+// JSON Viewer Component for Status History
+function StatusHistoryViewer({ history }: { history: StatusHistory[] }) {
+  return (
+    <div className="space-y-3">
+      <h4 className="font-medium text-sm">Status History</h4>
+      <div className="bg-gray-50 border rounded-lg p-3 max-h-60 overflow-y-auto">
+        <pre className="text-xs whitespace-pre-wrap">
+          {JSON.stringify(history, null, 2)}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 function CampaignMessages({ campaignId }: { campaignId: string }) {
   const [messages, setMessages] = useState<MessageSentDetail[]>([]);
   const [filteredMessages, setFilteredMessages] = useState<MessageSentDetail[]>([]);
@@ -92,6 +116,7 @@ function CampaignMessages({ campaignId }: { campaignId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'sent' | 'delivered' | 'failed'>('all');
+  const [selectedMessageHistory, setSelectedMessageHistory] = useState<MessageSentDetail | null>(null);
 
   useEffect(() => {
     const fetchMessages = async () => {
@@ -301,26 +326,73 @@ function CampaignMessages({ campaignId }: { campaignId: string }) {
 
             <div className="mt-4 flex-1 min-h-0">
               <TabsContent value="all" className="m-0 h-full">
-                <MessageList messages={filteredMessages} />
+                <MessageList 
+                  messages={filteredMessages} 
+                  onShowHistory={setSelectedMessageHistory}
+                />
               </TabsContent>
               <TabsContent value="sent" className="m-0 h-full">
-                <MessageList messages={filteredMessages} />
+                <MessageList 
+                  messages={filteredMessages} 
+                  onShowHistory={setSelectedMessageHistory}
+                />
               </TabsContent>
               <TabsContent value="delivered" className="m-0 h-full">
-                <MessageList messages={filteredMessages} />
+                <MessageList 
+                  messages={filteredMessages} 
+                  onShowHistory={setSelectedMessageHistory}
+                />
               </TabsContent>
               <TabsContent value="failed" className="m-0 h-full">
-                <MessageList messages={filteredMessages} />
+                <MessageList 
+                  messages={filteredMessages} 
+                  onShowHistory={setSelectedMessageHistory}
+                />
               </TabsContent>
             </div>
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Status History Dialog */}
+      <Dialog open={!!selectedMessageHistory} onOpenChange={() => setSelectedMessageHistory(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Info className="h-5 w-5" />
+              Message Status History
+            </DialogTitle>
+            <DialogDescription>
+              Complete status history for message to {selectedMessageHistory?.phoneNumber}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedMessageHistory && selectedMessageHistory.statusHistory && (
+            <StatusHistoryViewer history={selectedMessageHistory.statusHistory} />
+          )}
+          <div className="flex justify-end">
+            <Button onClick={() => setSelectedMessageHistory(null)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function MessageList({ messages }: { messages: MessageSentDetail[] }) {
+function MessageList({ 
+  messages, 
+  onShowHistory,
+  loadingMore,
+  hasMore,
+  onLoadMore
+}: { 
+  messages: MessageSentDetail[];
+  onShowHistory: (message: MessageSentDetail) => void;
+  loadingMore: boolean;
+  hasMore: boolean;
+  onLoadMore: () => void;
+}) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'delivered': return 'bg-green-100 text-green-800 border-green-200';
@@ -372,13 +444,26 @@ function MessageList({ messages }: { messages: MessageSentDetail[] }) {
                     {message.phoneNumber}
                   </span>
                 </div>
-                <Badge 
-                  variant="secondary" 
-                  className={`flex items-center gap-1 text-xs border ${getStatusColor(message.status)}`}
-                >
-                  {getStatusIcon(message.status)}
-                  {message.status.charAt(0).toUpperCase() + message.status.slice(1)}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge 
+                    variant="secondary" 
+                    className={`flex items-center gap-1 text-xs border ${getStatusColor(message.status)}`}
+                  >
+                    {getStatusIcon(message.status)}
+                    {message.status.charAt(0).toUpperCase() + message.status.slice(1)}
+                  </Badge>
+                  {/* Info icon for failed messages with status history */}
+                  {message.status === 'failed' && message.statusHistory && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 hover:bg-blue-50"
+                      onClick={() => onShowHistory(message)}
+                    >
+                      <Info className="h-3 w-3 text-blue-600" />
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {/* Message Content */}
@@ -440,6 +525,34 @@ function MessageList({ messages }: { messages: MessageSentDetail[] }) {
           </div>
         </Card>
       ))}
+
+      {/* Load More Button */}
+      {hasMore && (
+        <div className="flex justify-center pt-4">
+          <Button
+            onClick={onLoadMore}
+            disabled={loadingMore}
+            variant="outline"
+            className="min-w-32"
+          >
+            {loadingMore ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                Loading...
+              </>
+            ) : (
+              'Load More'
+            )}
+          </Button>
+        </div>
+      )}
+
+      {/* End of results message */}
+      {!hasMore && messages.length > 0 && (
+        <div className="text-center py-4 text-muted-foreground text-sm">
+          You've reached the end of the messages
+        </div>
+      )}
     </div>
   );
 }
@@ -469,309 +582,317 @@ export function CampaignDetailsDialog({ campaign, isOpen, onClose }: CampaignDet
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl h-[95vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Target className="h-5 w-5" />
-            Campaign Details: {campaign.name}
-          </DialogTitle>
-          <DialogDescription>
-            Complete overview of campaign performance and settings
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-6xl h-[95vh] flex flex-col p-0">
+        {/* Header - Fixed at top */}
+        <div className="flex-shrink-0 p-6 pb-4 border-b">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5" />
+              Campaign Details: {campaign.name}
+            </DialogTitle>
+            <DialogDescription>
+              Complete overview of campaign performance and settings
+            </DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <Tabs defaultValue="messages" className="space-y-6 flex-1 flex flex-col min-h-0">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="messages" className="flex items-center gap-2">
-              <MessageCircle className="h-4 w-4" />
-              Message Details
-            </TabsTrigger>
-            <TabsTrigger value="overview" className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4" />
-              Campaign Overview
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="flex items-center gap-2">
-              <Settings className="h-4 w-4" />
-              Settings
-            </TabsTrigger>
-          </TabsList>
+        {/* Scrollable Content Area */}
+        <div className="flex-1 overflow-y-auto px-6">
+          <Tabs defaultValue="messages" className="space-y-6 py-4">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="messages" className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4" />
+                Message Details
+              </TabsTrigger>
+              <TabsTrigger value="overview" className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Campaign Overview
+              </TabsTrigger>
+              <TabsTrigger value="settings" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Settings
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Message Details Tab */}
-          <TabsContent value="messages" className="space-y-4 flex-1 flex flex-col min-h-0 m-0">
-            <Card className="flex-1 flex flex-col min-h-0">
-              <CardContent className="p-0 flex-1">
-                <CampaignMessages campaignId={campaign._id} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Campaign Overview Tab */}
-          <TabsContent value="overview" className="space-y-4 m-0">
-            {/* Campaign Status and Basic Info */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Status</p>
-                      <div className="mt-1">{getStatusBadge(campaign.status)}</div>
-                    </div>
-                    <BarChart3 className="h-8 w-8 text-blue-500" />
-                  </div>
+            {/* Message Details Tab */}
+            <TabsContent value="messages" className="space-y-4 m-0">
+              <Card className="flex-1">
+                <CardContent className="p-0">
+                  <CampaignMessages campaignId={campaign._id} />
                 </CardContent>
               </Card>
+            </TabsContent>
 
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Delivery Rate</p>
-                      <p className="text-2xl font-bold">
-                        {getDeliveryRate(campaign).toFixed(1)}%
-                      </p>
+            {/* Campaign Overview Tab */}
+            <TabsContent value="overview" className="space-y-4 m-0">
+              {/* Campaign Status and Basic Info */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Status</p>
+                        <div className="mt-1">{getStatusBadge(campaign.status)}</div>
+                      </div>
+                      <BarChart3 className="h-8 w-8 text-blue-500" />
                     </div>
-                    <Send className="h-8 w-8 text-green-500" />
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
 
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Progress</p>
-                      <p className="text-2xl font-bold">
-                        {campaign.sentMessages}/{campaign.totalContacts}
-                      </p>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Delivery Rate</p>
+                        <p className="text-2xl font-bold">
+                          {getDeliveryRate(campaign).toFixed(1)}%
+                        </p>
+                      </div>
+                      <Send className="h-8 w-8 text-green-500" />
                     </div>
-                    <Users className="h-8 w-8 text-purple-500" />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                  </CardContent>
+                </Card>
 
-          {campaign.taskSettings?.timeRestrictions?.enabled && (
-            <div className="space-y-2">
-              <h4 className="font-medium text-sm flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                Time Restrictions
-              </h4>
-              <div className="text-sm text-muted-foreground">
-                <div>Sending allowed between: {campaign.taskSettings.timeRestrictions.startHour}:00 - {campaign.taskSettings.timeRestrictions.endHour}:00</div>
-                <div>Timezone: {campaign.taskSettings.timeRestrictions.timezone}</div>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Progress</p>
+                        <p className="text-2xl font-bold">
+                          {campaign.sentMessages}/{campaign.totalContacts}
+                        </p>
+                      </div>
+                      <Users className="h-8 w-8 text-purple-500" />
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
-            </div>
-          )}
 
-            {/* Progress Bar */}
-            <Card>
-              <CardContent className="p-4">
+              {campaign.taskSettings?.timeRestrictions?.enabled && (
                 <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Campaign Progress</span>
-                    <span>{getCampaignProgress(campaign).toFixed(1)}%</span>
-                  </div>
-                  <Progress value={getCampaignProgress(campaign)} className="h-2" />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Message Content */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <MessageCircle className="h-5 w-5" />
-                  Message Content
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">
-                      Message Content
-                    </label>
-                    <div className="mt-1 p-3 bg-muted rounded-lg whitespace-pre-wrap">
-                      {campaign.messageContent}
-                    </div>
-                  </div>
-                  
-                  {taskSettings.messageVariationType === 'ai_random' && (
-                    <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                      <Zap className="h-3 w-3" />
-                      AI Random Generation
-                    </Badge>
-                  )}
-                  
-                  {taskSettings.selectedVariantId && (
-                    <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                      <FileText className="h-3 w-3" />
-                      Multiple Variants
-                    </Badge>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Delivery Statistics */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <BarChart3 className="h-5 w-5" />
-                  Delivery Statistics
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center p-4 border rounded-lg">
-                    <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
-                    <p className="text-2xl font-bold text-green-600">
-                      {campaign.deliveredMessages || 0}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Delivered</p>
-                  </div>
-                  
-                  <div className="text-center p-4 border rounded-lg">
-                    <Send className="h-8 w-8 text-blue-500 mx-auto mb-2" />
-                    <p className="text-2xl font-bold text-blue-600">
-                      {campaign.sentMessages || 0}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Sent</p>
-                  </div>
-                  
-                  <div className="text-center p-4 border rounded-lg">
-                    <XCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-                    <p className="text-2xl font-bold text-red-600">
-                      {campaign.failedMessages || 0}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Failed</p>
+                  <h4 className="font-medium text-sm flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Time Restrictions
+                  </h4>
+                  <div className="text-sm text-muted-foreground">
+                    <div>Sending allowed between: {campaign.taskSettings.timeRestrictions.startHour}:00 - {campaign.taskSettings.timeRestrictions.endHour}:00</div>
+                    <div>Timezone: {campaign.taskSettings.timeRestrictions.timezone}</div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+              )}
 
-          {/* Settings Tab */}
-          <TabsContent value="settings" className="space-y-4 m-0">
-            {/* Campaign Settings */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Settings className="h-5 w-5" />
-                  Campaign Settings
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h4 className="font-medium mb-3">Basic Settings</h4>
-                    <dl className="space-y-3 text-sm">
-                      <div className="flex justify-between items-center py-2 border-b">
-                        <dt className="text-muted-foreground flex items-center gap-2">
-                          <Smartphone className="h-4 w-4" />
-                          Device:
-                        </dt>
-                        <dd className="font-medium">
-                          {(campaign.device as any)?.name || 'No device'}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between items-center py-2 border-b">
-                        <dt className="text-muted-foreground">Contact List:</dt>
-                        <dd className="font-medium">{(campaign.contactList as any)?.name || 'No list'}</dd>
-                      </div>
-                      <div className="flex justify-between items-center py-2 border-b">
-                        <dt className="text-muted-foreground">Priority:</dt>
-                        <dd className="font-medium capitalize">{campaign.priority}</dd>
-                      </div>
-                    </dl>
+              {/* Progress Bar */}
+              <Card>
+                <CardContent className="p-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Campaign Progress</span>
+                      <span>{getCampaignProgress(campaign).toFixed(1)}%</span>
+                    </div>
+                    <Progress value={getCampaignProgress(campaign)} className="h-2" />
                   </div>
+                </CardContent>
+              </Card>
 
-                  <div>
-                    <h4 className="font-medium mb-3">Sending Settings</h4>
-                    <dl className="space-y-3 text-sm">
-                      <div className="flex justify-between items-center py-2 border-b">
-                        <dt className="text-muted-foreground flex items-center gap-2">
-                          <Clock className="h-4 w-4" />
-                          Sending Interval:
-                        </dt>
-                        <dd className="font-medium">
-                          {formatInterval(taskSettings.interval_min || 30000, taskSettings.interval_max || 90000)}
-                        </dd>
+              {/* Message Content */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <MessageCircle className="h-5 w-5" />
+                    Message Content
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">
+                        Message Content
+                      </label>
+                      <div className="mt-1 p-3 bg-muted rounded-lg whitespace-pre-wrap">
+                        {campaign.messageContent}
                       </div>
-                      <div className="flex justify-between items-center py-2 border-b">
-                        <dt className="text-muted-foreground">Character Set:</dt>
-                        <dd className="font-medium">{taskSettings.charset || 'UTF-8'}</dd>
-                      </div>
-                      <div className="flex justify-between items-center py-2 border-b">
-                        <dt className="text-muted-foreground">Message Coding:</dt>
-                        <dd className="font-medium">
-                          {taskSettings.coding === 1 ? 'USC2' : taskSettings.coding === 2 ? 'GSM 7-bit' : 'Auto-detect'}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between items-center py-2 border-b">
-                        <dt className="text-muted-foreground">SMS Type:</dt>
-                        <dd className="font-medium">
-                          {taskSettings.sms_type === 1 ? 'Flash' : taskSettings.sms_type === 2 ? 'Unicode' : 'Normal'}
-                        </dd>
-                      </div>
-                    </dl>
+                    </div>
+                    
+                    {taskSettings.messageVariationType === 'ai_random' && (
+                      <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                        <Zap className="h-3 w-3" />
+                        AI Random Generation
+                      </Badge>
+                    )}
+                    
+                    {taskSettings.selectedVariantId && (
+                      <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                        <FileText className="h-3 w-3" />
+                        Multiple Variants
+                      </Badge>
+                    )}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            {/* Timeline */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Calendar className="h-5 w-5" />
-                  Campaign Timeline
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <dl className="space-y-3 text-sm">
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <dt className="text-muted-foreground">Created:</dt>
-                    <dd className="font-medium">{formatDate(campaign.createdAt)}</dd>
+              {/* Delivery Statistics */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <BarChart3 className="h-5 w-5" />
+                    Delivery Statistics
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="text-center p-4 border rounded-lg">
+                      <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                      <p className="text-2xl font-bold text-green-600">
+                        {campaign.deliveredMessages || 0}
+                      </p>
+                      <p className="text-sm text-muted-foreground">Delivered</p>
+                    </div>
+                    
+                    <div className="text-center p-4 border rounded-lg">
+                      <Send className="h-8 w-8 text-blue-500 mx-auto mb-2" />
+                      <p className="text-2xl font-bold text-blue-600">
+                        {campaign.sentMessages || 0}
+                      </p>
+                      <p className="text-sm text-muted-foreground">Sent</p>
+                    </div>
+                    
+                    <div className="text-center p-4 border rounded-lg">
+                      <XCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                      <p className="text-2xl font-bold text-red-600">
+                        {campaign.failedMessages || 0}
+                      </p>
+                      <p className="text-sm text-muted-foreground">Failed</p>
+                    </div>
                   </div>
-                  {campaign.processingStartedAt && (
-                    <div className="flex justify-between items-center py-2 border-b">
-                      <dt className="text-muted-foreground">Processing Started:</dt>
-                      <dd className="font-medium">{formatDate(campaign.processingStartedAt)}</dd>
-                    </div>
-                  )}
-                  {campaign.pausedAt && (
-                    <div className="flex justify-between items-center py-2 border-b">
-                      <dt className="text-muted-foreground">Paused:</dt>
-                      <dd className="font-medium">{formatDate(campaign.pausedAt)}</dd>
-                    </div>
-                  )}
-                  {campaign.resumedAt && (
-                    <div className="flex justify-between items-center py-2 border-b">
-                      <dt className="text-muted-foreground">Resumed:</dt>
-                      <dd className="font-medium">{formatDate(campaign.resumedAt)}</dd>
-                    </div>
-                  )}
-                  {campaign.completedAt && (
-                    <div className="flex justify-between items-center py-2 border-b">
-                      <dt className="text-muted-foreground">Completed:</dt>
-                      <dd className="font-medium">{formatDate(campaign.completedAt)}</dd>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <dt className="text-muted-foreground">Last Updated:</dt>
-                    <dd className="font-medium">{formatDate(campaign.updatedAt)}</dd>
-                  </div>
-                </dl>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-        {/* Close Button */}
-        <div className="flex justify-end pt-4 border-t">
-          <Button onClick={onClose}>
-            Close
-          </Button>
+            {/* Settings Tab */}
+            <TabsContent value="settings" className="space-y-4 m-0">
+              {/* Campaign Settings */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Settings className="h-5 w-5" />
+                    Campaign Settings
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h4 className="font-medium mb-3">Basic Settings</h4>
+                      <dl className="space-y-3 text-sm">
+                        <div className="flex justify-between items-center py-2 border-b">
+                          <dt className="text-muted-foreground flex items-center gap-2">
+                            <Smartphone className="h-4 w-4" />
+                            Device:
+                          </dt>
+                          <dd className="font-medium">
+                            {(campaign.device as any)?.name || 'No device'}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b">
+                          <dt className="text-muted-foreground">Contact List:</dt>
+                          <dd className="font-medium">{(campaign.contactList as any)?.name || 'No list'}</dd>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b">
+                          <dt className="text-muted-foreground">Priority:</dt>
+                          <dd className="font-medium capitalize">{campaign.priority}</dd>
+                        </div>
+                      </dl>
+                    </div>
+
+                    <div>
+                      <h4 className="font-medium mb-3">Sending Settings</h4>
+                      <dl className="space-y-3 text-sm">
+                        <div className="flex justify-between items-center py-2 border-b">
+                          <dt className="text-muted-foreground flex items-center gap-2">
+                            <Clock className="h-4 w-4" />
+                            Sending Interval:
+                          </dt>
+                          <dd className="font-medium">
+                            {formatInterval(taskSettings.interval_min || 30000, taskSettings.interval_max || 90000)}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b">
+                          <dt className="text-muted-foreground">Character Set:</dt>
+                          <dd className="font-medium">{taskSettings.charset || 'UTF-8'}</dd>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b">
+                          <dt className="text-muted-foreground">Message Coding:</dt>
+                          <dd className="font-medium">
+                            {taskSettings.coding === 1 ? 'USC2' : taskSettings.coding === 2 ? 'GSM 7-bit' : 'Auto-detect'}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b">
+                          <dt className="text-muted-foreground">SMS Type:</dt>
+                          <dd className="font-medium">
+                            {taskSettings.sms_type === 1 ? 'Flash' : taskSettings.sms_type === 2 ? 'Unicode' : 'Normal'}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Timeline */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Calendar className="h-5 w-5" />
+                    Campaign Timeline
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <dl className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <dt className="text-muted-foreground">Created:</dt>
+                      <dd className="font-medium">{formatDate(campaign.createdAt)}</dd>
+                    </div>
+                    {campaign.processingStartedAt && (
+                      <div className="flex justify-between items-center py-2 border-b">
+                        <dt className="text-muted-foreground">Processing Started:</dt>
+                        <dd className="font-medium">{formatDate(campaign.processingStartedAt)}</dd>
+                      </div>
+                    )}
+                    {campaign.pausedAt && (
+                      <div className="flex justify-between items-center py-2 border-b">
+                        <dt className="text-muted-foreground">Paused:</dt>
+                        <dd className="font-medium">{formatDate(campaign.pausedAt)}</dd>
+                      </div>
+                    )}
+                    {campaign.resumedAt && (
+                      <div className="flex justify-between items-center py-2 border-b">
+                        <dt className="text-muted-foreground">Resumed:</dt>
+                        <dd className="font-medium">{formatDate(campaign.resumedAt)}</dd>
+                      </div>
+                    )}
+                    {campaign.completedAt && (
+                      <div className="flex justify-between items-center py-2 border-b">
+                        <dt className="text-muted-foreground">Completed:</dt>
+                        <dd className="font-medium">{formatDate(campaign.completedAt)}</dd>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <dt className="text-muted-foreground">Last Updated:</dt>
+                      <dd className="font-medium">{formatDate(campaign.updatedAt)}</dd>
+                    </div>
+                  </dl>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        {/* Close Button - Fixed at bottom */}
+        <div className="flex-shrink-0 border-t p-6 bg-background">
+          <div className="flex justify-end">
+            <Button onClick={onClose}>
+              Close
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
