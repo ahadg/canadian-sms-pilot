@@ -97,6 +97,7 @@ interface SIMCard {
   todaySent: number;
   lastResetDate: string;
   lastActivity: string;
+  slot: number
   port: string;
   iccid: string;
   imsi: string;
@@ -155,7 +156,7 @@ export function DeviceManagement() {
     phoneNumber: '',
     message: ''
   });
-  
+
   // Get the sendSMS function from your store
   const { sendSMS } = useMessagesStore();
   const [isSendingSMS, setIsSendingSMS] = useState(false);
@@ -177,7 +178,7 @@ export function DeviceManagement() {
       const data = await EjoinAPIService.getDevices();
       console.log("loadDevices_data", data);
       setDevices(data || [] as any);
-      
+
       // Auto-select first device if none selected
       if (data && data.length > 0 && !selectedDevice) {
         setSelectedDevice(data[0]);
@@ -193,7 +194,7 @@ export function DeviceManagement() {
   const loadAllSims = async () => {
     try {
       const response = await authFetch('/api/sims');
-      console.log("response",response)
+      console.log("response", response)
       if (response) {
         setAllSims(response.sims || []);
       }
@@ -219,18 +220,18 @@ export function DeviceManagement() {
       });
 
       if (result) {
-       // const updatedSim = await result.json();
-        
+        // const updatedSim = await result.json();
+
         // Update in allSims
-        setAllSims(prev => prev.map(sim => 
+        setAllSims(prev => prev.map(sim =>
           sim._id === editingSim._id ? { ...sim, dailyLimit: dailyLimit } : sim
         ));
-        
+
         // Update in current device SIMs if applicable
-        setSimCards(prev => prev.map(sim => 
+        setSimCards(prev => prev.map(sim =>
           sim._id === editingSim._id ? { ...sim, dailyLimit: dailyLimit } : sim
         ));
-        
+
         toast.success('SIM limit updated successfully');
         setSettingsDialogOpen(false);
       } else {
@@ -261,19 +262,19 @@ export function DeviceManagement() {
 
       if (result) {
         const updatedSims = result
-        
+
         // Update all SIMs
         setAllSims(prev => prev.map(sim => {
           const updatedSim = updatedSims.sims.find((us: SIMCard) => us._id === sim._id);
           return updatedSim ? updatedSim : sim;
         }));
-        
+
         // Update current device SIMs
         setSimCards(prev => prev.map(sim => {
           const updatedSim = updatedSims.sims.find((us: SIMCard) => us._id === sim._id);
           return updatedSim ? updatedSim : sim;
         }));
-        
+
         toast.success(`Updated limits for ${sims.length} SIM cards`);
       } else {
         const error = await result.json();
@@ -304,7 +305,7 @@ export function DeviceManagement() {
           status: "offline" as const,
           last_seen: new Date().toISOString(),
         };
-        
+
         setDevices(prev => prev.map(d => d.id === device.id ? updatedDevice : d));
         return updatedDevice;
       }
@@ -388,7 +389,7 @@ export function DeviceManagement() {
     setSendingUssd(key);
 
     try {
-      const result = await EjoinAPIService.sendUSSDCommand(device?._id, [{ports: [port], ussd: command, timeout: 60}]);
+      const result = await EjoinAPIService.sendUSSDCommand(device?._id, [{ ports: [port], ussd: command, timeout: 60 }]);
       console.log("handleSendUSSD_result", result);
       if (result.success) {
         toast.success(`USSD command executed successfully`);
@@ -457,7 +458,7 @@ export function DeviceManagement() {
     if (!inserted) {
       return <Badge variant="secondary" className="bg-gray-100 text-gray-600">No SIM</Badge>;
     }
-    
+
     switch (status) {
       case "active":
         return <Badge variant="secondary" className="bg-green-100 text-green-800">Active</Badge>;
@@ -513,16 +514,16 @@ export function DeviceManagement() {
             )}
             Refresh All
           </Button>
-          
+
           {/* SIM Limits Button */}
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => setSimLimitsDialogOpen(true)}
           >
             <IdCard className="h-4 w-4 mr-2" />
             SIM Limits
           </Button>
-          
+
           <Dialog>
             <DialogTrigger asChild>
               <Button className="bg-blue-600 text-white hover:bg-blue-700">
@@ -540,58 +541,58 @@ export function DeviceManagement() {
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="deviceName">Device Name</Label>
-                  <Input 
-                    id="deviceName" 
-                    placeholder="Ejoin Gateway 004" 
+                  <Input
+                    id="deviceName"
+                    placeholder="Ejoin Gateway 004"
                     value={newDevice.name}
-                    onChange={(e) => setNewDevice({...newDevice, name: e.target.value})}
+                    onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
                   />
                 </div>
                 <div>
                   <Label htmlFor="ipAddress">IP Address</Label>
-                  <Input 
-                    id="ipAddress" 
-                    placeholder="192.168.1.103" 
+                  <Input
+                    id="ipAddress"
+                    placeholder="192.168.1.103"
                     value={newDevice.ipAddress}
-                    onChange={(e) => setNewDevice({...newDevice, ipAddress: e.target.value})}
+                    onChange={(e) => setNewDevice({ ...newDevice, ipAddress: e.target.value })}
                   />
                 </div>
                 <div>
                   <Label htmlFor="port">Port</Label>
-                  <Input 
-                    id="port" 
-                    type="number" 
-                    placeholder="80" 
+                  <Input
+                    id="port"
+                    type="number"
+                    placeholder="80"
                     value={newDevice.port}
-                    onChange={(e) => setNewDevice({...newDevice, port: parseInt(e.target.value) || 80})}
+                    onChange={(e) => setNewDevice({ ...newDevice, port: parseInt(e.target.value) || 80 })}
                   />
                 </div>
                 <div>
                   <Label htmlFor="username">Username</Label>
-                  <Input 
-                    id="username" 
-                    placeholder="root" 
+                  <Input
+                    id="username"
+                    placeholder="root"
                     value={newDevice.username}
-                    onChange={(e) => setNewDevice({...newDevice, username: e.target.value})}
+                    onChange={(e) => setNewDevice({ ...newDevice, username: e.target.value })}
                   />
                 </div>
                 <div>
                   <Label htmlFor="password">Password</Label>
-                  <Input 
-                    id="password" 
-                    type="password" 
-                    placeholder="root" 
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="root"
                     value={newDevice.password}
-                    onChange={(e) => setNewDevice({...newDevice, password: e.target.value})}
+                    onChange={(e) => setNewDevice({ ...newDevice, password: e.target.value })}
                   />
                 </div>
                 <div>
                   <Label htmlFor="location">Location</Label>
-                  <Input 
-                    id="location" 
-                    placeholder="Calgary, AB" 
+                  <Input
+                    id="location"
+                    placeholder="Calgary, AB"
                     value={newDevice.location}
-                    onChange={(e) => setNewDevice({...newDevice, location: e.target.value})}
+                    onChange={(e) => setNewDevice({ ...newDevice, location: e.target.value })}
                   />
                 </div>
                 <Button onClick={handleAddDevice} className="w-full">
@@ -606,24 +607,21 @@ export function DeviceManagement() {
       {/* Device Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {devices.map((device) => (
-          <Card 
-            key={device._id} 
-            className={`cursor-pointer transition-all duration-200 hover:shadow-xl hover:scale-[1.02] ${
-              selectedDevice?._id === device._id ? 'ring-2 ring-blue-500 shadow-lg' : 'hover:ring-1 hover:ring-gray-300'
-            }`}
+          <Card
+            key={device._id}
+            className={`cursor-pointer transition-all duration-200 hover:shadow-xl hover:scale-[1.02] ${selectedDevice?._id === device._id ? 'ring-2 ring-blue-500 shadow-lg' : 'hover:ring-1 hover:ring-gray-300'
+              }`}
             onClick={() => setSelectedDevice(device)}
           >
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <div className={`p-2 rounded-lg ${
-                    device.status === 'online' ? 'bg-green-100' :
-                    device.status === 'warning' ? 'bg-yellow-100' : 'bg-red-100'
-                  }`}>
-                    <Router className={`h-5 w-5 ${
-                      device.status === 'online' ? 'text-green-600' :
-                      device.status === 'warning' ? 'text-yellow-600' : 'text-red-600'
-                    }`} />
+                  <div className={`p-2 rounded-lg ${device.status === 'online' ? 'bg-green-100' :
+                      device.status === 'warning' ? 'bg-yellow-100' : 'bg-red-100'
+                    }`}>
+                    <Router className={`h-5 w-5 ${device.status === 'online' ? 'text-green-600' :
+                        device.status === 'warning' ? 'text-yellow-600' : 'text-red-600'
+                      }`} />
                   </div>
                   <span className="truncate">{device.name}</span>
                 </CardTitle>
@@ -651,23 +649,23 @@ export function DeviceManagement() {
                   <div className="font-medium truncate">{device.firmwareVersion || 'N/A'}</div>
                 </div>
               </div>
-  
-              
+
+
               <div className="space-y-2 pt-2 border-t">
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground">Active SIMs</span>
                   <span className="font-semibold text-blue-600">{device.activeSlots}/{device.totalSlots}</span>
                 </div>
-                <Progress 
+                <Progress
                   value={device.totalSlots > 0 ? (device.activeSlots / device.totalSlots) * 100 : 0}
                   className="h-2"
                 />
               </div>
 
               <div className="flex gap-2 pt-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="flex-1"
                   // onClick={(e) => {
                   //   e.stopPropagation();
@@ -678,9 +676,9 @@ export function DeviceManagement() {
                   <IdCard className="h-4 w-4 mr-2" />
                   SIM Limits
                 </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={(e) => {
                     e.stopPropagation();
                     refreshDeviceStatus(device);
@@ -692,7 +690,7 @@ export function DeviceManagement() {
             </CardContent>
           </Card>
         ))}
-        
+
         {devices.length === 0 && (
           <div className="col-span-full text-center py-16 border-2 border-dashed border-gray-300 rounded-lg">
             <div className="inline-block p-4 bg-gray-100 rounded-full mb-4">
@@ -719,58 +717,58 @@ export function DeviceManagement() {
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="deviceName2">Device Name</Label>
-                    <Input 
-                      id="deviceName2" 
-                      placeholder="Ejoin Gateway 004" 
+                    <Input
+                      id="deviceName2"
+                      placeholder="Ejoin Gateway 004"
                       value={newDevice.name}
-                      onChange={(e) => setNewDevice({...newDevice, name: e.target.value})}
+                      onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
                     />
                   </div>
                   <div>
                     <Label htmlFor="ipAddress2">IP Address</Label>
-                    <Input 
-                      id="ipAddress2" 
-                      placeholder="192.168.1.103" 
+                    <Input
+                      id="ipAddress2"
+                      placeholder="192.168.1.103"
                       value={newDevice.ipAddress}
-                      onChange={(e) => setNewDevice({...newDevice, ipAddress: e.target.value})}
+                      onChange={(e) => setNewDevice({ ...newDevice, ipAddress: e.target.value })}
                     />
                   </div>
                   <div>
                     <Label htmlFor="port2">Port</Label>
-                    <Input 
-                      id="port2" 
-                      type="number" 
-                      placeholder="80" 
+                    <Input
+                      id="port2"
+                      type="number"
+                      placeholder="80"
                       value={newDevice.port}
-                      onChange={(e) => setNewDevice({...newDevice, port: parseInt(e.target.value) || 80})}
+                      onChange={(e) => setNewDevice({ ...newDevice, port: parseInt(e.target.value) || 80 })}
                     />
                   </div>
                   <div>
                     <Label htmlFor="username2">Username</Label>
-                    <Input 
-                      id="username2" 
-                      placeholder="root" 
+                    <Input
+                      id="username2"
+                      placeholder="root"
                       value={newDevice.username}
-                      onChange={(e) => setNewDevice({...newDevice, username: e.target.value})}
+                      onChange={(e) => setNewDevice({ ...newDevice, username: e.target.value })}
                     />
                   </div>
                   <div>
                     <Label htmlFor="password2">Password</Label>
-                    <Input 
-                      id="password2" 
-                      type="password" 
-                      placeholder="root" 
+                    <Input
+                      id="password2"
+                      type="password"
+                      placeholder="root"
                       value={newDevice.password}
-                      onChange={(e) => setNewDevice({...newDevice, password: e.target.value})}
+                      onChange={(e) => setNewDevice({ ...newDevice, password: e.target.value })}
                     />
                   </div>
                   <div>
                     <Label htmlFor="location2">Location</Label>
-                    <Input 
-                      id="location2" 
-                      placeholder="Calgary, AB" 
+                    <Input
+                      id="location2"
+                      placeholder="Calgary, AB"
                       value={newDevice.location}
-                      onChange={(e) => setNewDevice({...newDevice, location: e.target.value})}
+                      onChange={(e) => setNewDevice({ ...newDevice, location: e.target.value })}
                     />
                   </div>
                   <Button onClick={handleAddDevice} className="w-full">
@@ -793,9 +791,9 @@ export function DeviceManagement() {
                 SIM Card Management - {selectedDevice.name}
               </CardTitle>
               <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => loadDeviceSIMs(selectedDevice)}
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
@@ -826,19 +824,18 @@ export function DeviceManagement() {
                       const simKey = `${selectedDevice._id}-${sim.port}`;
                       const currentUssdHistory = ussdHistory[simKey] || [];
                       const latestCommand = currentUssdHistory[0];
-                      
+
                       return (
                         <TableRow key={`${sim.port}-${sim.slotId}`}>
                           <TableCell className="font-medium">
                             <div className="flex items-center gap-2">
                               {sim.port}
                               {latestCommand && (
-                                <div 
-                                  className={`w-2 h-2 rounded-full ${
-                                    latestCommand.status === 'success' ? 'bg-green-500' :
-                                    latestCommand.status === 'error' ? 'bg-red-500' :
-                                    latestCommand.status === 'pending' ? 'bg-yellow-500' : 'bg-gray-500'
-                                  }`}
+                                <div
+                                  className={`w-2 h-2 rounded-full ${latestCommand.status === 'success' ? 'bg-green-500' :
+                                      latestCommand.status === 'error' ? 'bg-red-500' :
+                                        latestCommand.status === 'pending' ? 'bg-yellow-500' : 'bg-gray-500'
+                                    }`}
                                   title={`Last USSD: ${latestCommand.status}`}
                                 />
                               )}
@@ -869,12 +866,12 @@ export function DeviceManagement() {
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1">
-                            <Button
+                              <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  console.log("sim",sim)
+                                  console.log("sim", sim)
                                   setSendSMSDialog({
                                     open: true,
                                     device: selectedDevice,
@@ -945,7 +942,7 @@ export function DeviceManagement() {
               Set daily SMS limits for all SIM cards across your devices
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             {/* Bulk Actions */}
             <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
@@ -991,11 +988,11 @@ export function DeviceManagement() {
                   </TableHeader>
                   <TableBody>
                     {allSims.map((sim) => {
-                      console.log("sim_devices",devices)
-                      console.log("sim",sim)
+                      console.log("sim_devices", devices)
+                      console.log("sim", sim)
                       const device = devices.find(d => d._id === sim.device?._id);
                       const usagePercentage = sim.dailyLimit > 0 ? (sim.todaySent / sim.dailyLimit) * 100 : 0;
-                      
+
                       return (
                         <TableRow key={sim._id}>
                           <TableCell className="font-medium">
@@ -1015,12 +1012,11 @@ export function DeviceManagement() {
                                 <span>{sim.todaySent}/{sim.dailyLimit}</span>
                                 <span>{Math.round(usagePercentage)}%</span>
                               </div>
-                              <Progress 
-                                value={usagePercentage} 
-                                className={`h-1 ${
-                                  usagePercentage >= 90 ? 'bg-red-500' :
-                                  usagePercentage >= 75 ? 'bg-yellow-500' : 'bg-green-500'
-                                }`}
+                              <Progress
+                                value={usagePercentage}
+                                className={`h-1 ${usagePercentage >= 90 ? 'bg-red-500' :
+                                    usagePercentage >= 75 ? 'bg-yellow-500' : 'bg-green-500'
+                                  }`}
                               />
                             </div>
                           </TableCell>
@@ -1031,7 +1027,7 @@ export function DeviceManagement() {
                                 value={sim.dailyLimit}
                                 onChange={(e) => {
                                   const newLimit = parseInt(e.target.value) || 0;
-                                  setAllSims(prev => prev.map(s => 
+                                  setAllSims(prev => prev.map(s =>
                                     s._id === sim._id ? { ...s, dailyLimit: newLimit } : s
                                   ));
                                 }}
@@ -1076,7 +1072,7 @@ export function DeviceManagement() {
               Configure daily SMS limit for {editingSim?.phoneNumber || `Port ${editingSim?.port}`}
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div>
               <Label htmlFor="dailyLimit">Daily SMS Limit</Label>
@@ -1154,7 +1150,7 @@ export function DeviceManagement() {
                 }}
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label>Quick Commands</Label>
               <div className="flex flex-wrap gap-2">
@@ -1275,7 +1271,7 @@ export function DeviceManagement() {
               Send SMS to {sendSMSDialog.phoneNumber || `Port ${sendSMSDialog.port}`} on {sendSMSDialog.device?.name}
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             {/* Phone Number Input */}
             <div>

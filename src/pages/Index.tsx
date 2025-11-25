@@ -14,15 +14,16 @@ import { useNavigationStore } from "@/store/useNavigationStore"; // Import the n
 import { Toaster } from "@/components/ui/toaster";
 import { Settings } from "@/components/settings";
 import { Inbox } from "@/components/inbox";
+import { UserManagement } from "@/components/admin/UserManagement";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { 
-  Bell, 
-  CheckCheck, 
-  Smartphone, 
-  TrendingDown, 
-  WifiOff, 
-  MessageCircle, 
+import {
+  Bell,
+  CheckCheck,
+  Smartphone,
+  TrendingDown,
+  WifiOff,
+  MessageCircle,
   Sparkles,
   Wifi,
   WifiOff as WifiDisconnected,
@@ -37,16 +38,16 @@ declare global {
 
 function AppContent() {
   const [showNotifications, setShowNotifications] = useState(false);
-  
+
   // Use navigation store instead of local state
   const { activeSection, setActiveSection } = useNavigationStore();
   const { user, isAuthenticated, loading, checkAuth } = useAuthStore();
-  const { 
-    isConnected, 
-    connect, 
-    disconnect 
+  const {
+    isConnected,
+    connect,
+    disconnect
   } = useSocketStore();
-  
+
   const {
     notifications,
     notificationsLoading,
@@ -116,6 +117,8 @@ function AppContent() {
         return <Inbox />;
       case "settings":
         return <Settings />
+      case "users":
+        return <UserManagement />;
       default:
         return <Dashboard />;
     }
@@ -179,7 +182,7 @@ function AppContent() {
   };
 
   const handleNotificationClick = async (notification: any) => {
-    console.log("handleNotificationClick_notification",notification)
+    console.log("handleNotificationClick_notification", notification)
     // Mark as read when clicked
     if (notification.unread) {
       markNotificationAsReadOnServer(notification.id || notification._id);
@@ -208,13 +211,13 @@ function AppContent() {
         {renderContent()}
       </main>
       <Toaster />
-      
+
       {/* Connection Status Indicator */}
       <div className="fixed top-1 right-4 z-30">
         <div className={cn(
           "flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium border backdrop-blur-sm",
-          isConnected 
-            ? "bg-green-500/10 text-green-700 border-green-500/20" 
+          isConnected
+            ? "bg-green-500/10 text-green-700 border-green-500/20"
             : "bg-red-500/10 text-red-700 border-red-500/20"
         )}>
           {isConnected ? (
@@ -229,7 +232,7 @@ function AppContent() {
           )}
         </div>
       </div>
-      
+
       {/* Notification Button - Bottom Right */}
       <div className="fixed bottom-6 right-6 z-30">
         <Button
@@ -264,48 +267,48 @@ function AppContent() {
 
       {/* Notifications Panel */}
       {/* Notifications Panel */}
-{showNotifications && (
-  <>
-    {/* Backdrop */}
-    <div 
-      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 animate-in fade-in duration-300"
-      onClick={() => setShowNotifications(false)}
-    />
+      {showNotifications && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 animate-in fade-in duration-300"
+            onClick={() => setShowNotifications(false)}
+          />
 
-    {/* Notifications Dropdown */}
-    <div className="fixed bottom-24 right-6 w-[440px] bg-gradient-to-br from-background/95 to-background/80 backdrop-blur-2xl border border-border/40 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-50 max-h-[36rem] overflow-hidden flex flex-col animate-in slide-in-from-bottom-8 duration-300">
-      {/* Header */}
-      <div className="relative p-6 border-b border-border/40 bg-gradient-to-br from-primary/10 to-transparent">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-primary/15 flex items-center justify-center ring-1 ring-primary/25 shadow-inner shadow-primary/20">
-              {notificationsLoading ? (
-                <Loader2 className="h-5 w-5 text-primary animate-spin" />
-              ) : (
-                <Bell className="h-5 w-5 text-primary" />
-              )}
+          {/* Notifications Dropdown */}
+          <div className="fixed bottom-24 right-6 w-[440px] bg-gradient-to-br from-background/95 to-background/80 backdrop-blur-2xl border border-border/40 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-50 max-h-[36rem] overflow-hidden flex flex-col animate-in slide-in-from-bottom-8 duration-300">
+            {/* Header */}
+            <div className="relative p-6 border-b border-border/40 bg-gradient-to-br from-primary/10 to-transparent">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-2xl bg-primary/15 flex items-center justify-center ring-1 ring-primary/25 shadow-inner shadow-primary/20">
+                    {notificationsLoading ? (
+                      <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                    ) : (
+                      <Bell className="h-5 w-5 text-primary" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg tracking-tight">Notifications</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {notificationsLoading
+                        ? "Syncing your updates..."
+                        : unreadCount > 0
+                          ? `${unreadCount} unread notification${unreadCount > 1 ? "s" : ""}`
+                          : "You're all caught up 🎉"}
+                    </p>
+                  </div>
+                </div>
+                {!notificationsLoading && unreadCount > 0 && (
+                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-md">
+                    <span className="text-xs font-bold text-primary-foreground">{unreadCount}</span>
+                  </div>
+                )}
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-lg tracking-tight">Notifications</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {notificationsLoading
-                  ? "Syncing your updates..."
-                  : unreadCount > 0
-                  ? `${unreadCount} unread notification${unreadCount > 1 ? "s" : ""}`
-                  : "You're all caught up 🎉"}
-              </p>
-            </div>
-          </div>
-          {!notificationsLoading && unreadCount > 0 && (
-            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-md">
-              <span className="text-xs font-bold text-primary-foreground">{unreadCount}</span>
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Category Tabs */}
-      {/* <div className="flex px-3 py-2 border-b border-border/30 bg-background/50 backdrop-blur-md">
+            {/* Category Tabs */}
+            {/* <div className="flex px-3 py-2 border-b border-border/30 bg-background/50 backdrop-blur-md">
         {["All", "Unread", "System"].map((tab) => (
           <button
             key={tab}
@@ -320,113 +323,113 @@ function AppContent() {
         ))}
       </div> */}
 
-      {/* Notifications List */}
-      <div className="overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-border/40 scrollbar-track-transparent">
-        {notificationsLoading ? (
-          <div className="flex items-center justify-center p-8">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : notifications.length === 0 ? (
-          <div className="p-16 text-center animate-in fade-in duration-300">
-            <div className="h-20 w-20 rounded-3xl bg-gradient-to-br from-muted/50 to-muted/30 mx-auto mb-4 flex items-center justify-center ring-1 ring-border/40 animate-pulse">
-              <Bell className="h-10 w-10 opacity-25" />
-            </div>
-            <p className="font-semibold text-base mb-1">No new notifications</p>
-            <p className="text-sm text-muted-foreground">
-              {isConnected
-                ? "You’ll see updates here as they arrive."
-                : "Connect to receive live updates."}
-            </p>
-          </div>
-        ) : (
-          <div className="p-3 space-y-2 animate-in fade-in-50 duration-300">
-            {notifications.map((notification, index) => {
-              const config = getNotificationConfig(notification.type);
-              const IconComponent = config.icon;
-
-              return (
-                <div
-                  key={notification.id}
-                  className={cn(
-                    "group relative p-4 rounded-2xl transition-all duration-300 cursor-pointer backdrop-blur-sm border border-border/40 shadow-sm",
-                    "hover:scale-[1.02] hover:shadow-lg hover:border-primary/30 hover:bg-primary/5",
-                    notification.unread
-                      ? "bg-gradient-to-br from-primary/8 via-primary/5 to-background border-primary/30"
-                      : "bg-background/60"
-                  )}
-                  onClick={() => handleNotificationClick(notification)}
-                  style={{ animationDelay: `${index * 50}ms` }}
-                >
-                  <div className="flex items-start gap-4">
-                    {/* Icon */}
-                    <div
-                      className={cn(
-                        "relative flex-shrink-0 h-11 w-11 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 shadow-inner ring-1 ring-border/20",
-                        config.bgColor
-                      )}
-                    >
-                      <IconComponent className={cn("h-5 w-5", config.color)} />
-                      {notification.unread && (
-                        <div className="absolute -top-1 -right-1">
-                          <div className="h-3 w-3 rounded-full bg-primary animate-pulse ring-2 ring-background" />
-                          <div className="absolute inset-0 h-3 w-3 rounded-full bg-primary animate-ping opacity-70" />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className={cn(
-                          "font-semibold text-sm leading-tight mb-1",
-                          notification.unread
-                            ? "text-foreground"
-                            : "text-foreground/80"
-                        )}
-                      >
-                        {notification.title}
-                      </p>
-                      <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
-                        {notification.message}
-                      </p>
-                      <div className="flex items-center justify-between mt-2">
-                        <p className="text-xs text-muted-foreground/70 font-medium">
-                          {formatTime(notification.time || notification.createdAt)}
-                        </p>
-                        {notification.unread && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary font-semibold ring-1 ring-primary/20">
-                            New
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {/* Glow border on hover */}
-                  <div className="absolute inset-0 rounded-2xl ring-1 ring-transparent group-hover:ring-primary/30 transition-all pointer-events-none" />
+            {/* Notifications List */}
+            <div className="overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-border/40 scrollbar-track-transparent">
+              {notificationsLoading ? (
+                <div className="flex items-center justify-center p-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+              ) : notifications.length === 0 ? (
+                <div className="p-16 text-center animate-in fade-in duration-300">
+                  <div className="h-20 w-20 rounded-3xl bg-gradient-to-br from-muted/50 to-muted/30 mx-auto mb-4 flex items-center justify-center ring-1 ring-border/40 animate-pulse">
+                    <Bell className="h-10 w-10 opacity-25" />
+                  </div>
+                  <p className="font-semibold text-base mb-1">No new notifications</p>
+                  <p className="text-sm text-muted-foreground">
+                    {isConnected
+                      ? "You’ll see updates here as they arrive."
+                      : "Connect to receive live updates."}
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3 space-y-2 animate-in fade-in-50 duration-300">
+                  {notifications.map((notification, index) => {
+                    const config = getNotificationConfig(notification.type);
+                    const IconComponent = config.icon;
 
-      {/* Footer */}
-      {!notificationsLoading && notifications.length > 0 && (
-        <div className="p-4 border-t border-border/40 bg-gradient-to-br from-background/80 to-background/50">
-          <Button
-            variant="ghost"
-            className="w-full text-sm font-semibold hover:bg-primary/10 hover:text-primary transition-all duration-300 rounded-xl h-11 gap-2 group"
-            onClick={handleMarkAllAsRead}
-            disabled={unreadCount === 0}
-          >
-            <CheckCheck className="h-4 w-4 transition-transform group-hover:scale-110" />
-            Mark all as read
-          </Button>
-        </div>
+                    return (
+                      <div
+                        key={notification.id}
+                        className={cn(
+                          "group relative p-4 rounded-2xl transition-all duration-300 cursor-pointer backdrop-blur-sm border border-border/40 shadow-sm",
+                          "hover:scale-[1.02] hover:shadow-lg hover:border-primary/30 hover:bg-primary/5",
+                          notification.unread
+                            ? "bg-gradient-to-br from-primary/8 via-primary/5 to-background border-primary/30"
+                            : "bg-background/60"
+                        )}
+                        onClick={() => handleNotificationClick(notification)}
+                        style={{ animationDelay: `${index * 50}ms` }}
+                      >
+                        <div className="flex items-start gap-4">
+                          {/* Icon */}
+                          <div
+                            className={cn(
+                              "relative flex-shrink-0 h-11 w-11 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 shadow-inner ring-1 ring-border/20",
+                              config.bgColor
+                            )}
+                          >
+                            <IconComponent className={cn("h-5 w-5", config.color)} />
+                            {notification.unread && (
+                              <div className="absolute -top-1 -right-1">
+                                <div className="h-3 w-3 rounded-full bg-primary animate-pulse ring-2 ring-background" />
+                                <div className="absolute inset-0 h-3 w-3 rounded-full bg-primary animate-ping opacity-70" />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <p
+                              className={cn(
+                                "font-semibold text-sm leading-tight mb-1",
+                                notification.unread
+                                  ? "text-foreground"
+                                  : "text-foreground/80"
+                              )}
+                            >
+                              {notification.title}
+                            </p>
+                            <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
+                              {notification.message}
+                            </p>
+                            <div className="flex items-center justify-between mt-2">
+                              <p className="text-xs text-muted-foreground/70 font-medium">
+                                {formatTime(notification.time || notification.createdAt)}
+                              </p>
+                              {notification.unread && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary font-semibold ring-1 ring-primary/20">
+                                  New
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Glow border on hover */}
+                        <div className="absolute inset-0 rounded-2xl ring-1 ring-transparent group-hover:ring-primary/30 transition-all pointer-events-none" />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            {!notificationsLoading && notifications.length > 0 && (
+              <div className="p-4 border-t border-border/40 bg-gradient-to-br from-background/80 to-background/50">
+                <Button
+                  variant="ghost"
+                  className="w-full text-sm font-semibold hover:bg-primary/10 hover:text-primary transition-all duration-300 rounded-xl h-11 gap-2 group"
+                  onClick={handleMarkAllAsRead}
+                  disabled={unreadCount === 0}
+                >
+                  <CheckCheck className="h-4 w-4 transition-transform group-hover:scale-110" />
+                  Mark all as read
+                </Button>
+              </div>
+            )}
+          </div>
+        </>
       )}
-    </div>
-  </>
-)}
 
     </div>
   );

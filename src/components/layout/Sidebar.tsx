@@ -11,7 +11,8 @@ import {
   Zap,
   MessageSquare,
   LogOut,
-  MessageCircleMore
+  MessageCircleMore,
+  Users
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useNavigationStore } from "@/store/useNavigationStore";
@@ -60,9 +61,9 @@ const navigationItems = [
 ];
 
 export function Sidebar({ }: SidebarProps) {
-  const { logout } = useAuthStore();
+  const { logout, user } = useAuthStore();
   const { activeSection, navigateToSection } = useNavigationStore();
-  
+
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-card">
       {/* Header */}
@@ -81,7 +82,7 @@ export function Sidebar({ }: SidebarProps) {
         {navigationItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeSection === item.id;
-          
+
           return (
             <Button
               key={item.id}
@@ -100,6 +101,26 @@ export function Sidebar({ }: SidebarProps) {
             </Button>
           );
         })}
+
+        {/* Admin-only User Management */}
+        {
+          //user?.role === 'admin' 
+          true && (
+            <Button
+              variant={activeSection === "users" ? "default" : "ghost"}
+              className={cn(
+                "w-full justify-start gap-3 h-auto p-3",
+                activeSection === "users" && "bg-primary text-primary-foreground shadow-primary"
+              )}
+              onClick={() => navigateToSection("users")}
+            >
+              <Users className="h-4 w-4" />
+              <div className="text-left">
+                <div className="font-medium">User Management</div>
+                <div className="text-xs opacity-70">Manage users & SIMs</div>
+              </div>
+            </Button>
+          )}
       </nav>
 
       <Separator />
