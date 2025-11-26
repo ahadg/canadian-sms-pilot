@@ -57,7 +57,7 @@ interface User {
     name: string;
     email: string;
     role: 'admin' | 'user';
-    assignedSims?: string[];
+    assignedSims?: (string | { _id: string; port: number; operator: string; status: string })[];
     createdAt: string;
 }
 
@@ -301,7 +301,11 @@ export function UserManagement() {
     // Open assign SIM dialog
     const openAssignSimDialog = (user: User) => {
         setSelectedUser(user);
-        setSelectedSims(user.assignedSims || []);
+        // Handle assignedSims being either array of IDs or array of objects
+        const simIds = user.assignedSims?.map((sim: any) =>
+            typeof sim === 'string' ? sim : sim._id
+        ) || [];
+        setSelectedSims(simIds);
         setIsAssignSimDialogOpen(true);
     };
 
@@ -318,6 +322,7 @@ export function UserManagement() {
             </div>
         );
     }
+    console.log("selectedSims", selectedUser);
 
     return (
         <div className="flex-1 space-y-6 p-8 pt-6">
@@ -410,7 +415,7 @@ export function UserManagement() {
                         <div className="text-2xl font-bold">{users.length}</div>
                     </CardContent>
                 </Card>
-                <Card>
+                {/* <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Admins</CardTitle>
                         <Shield className="h-4 w-4 text-muted-foreground" />
@@ -420,14 +425,14 @@ export function UserManagement() {
                             {users.filter(u => u.role === 'admin').length}
                         </div>
                     </CardContent>
-                </Card>
+                </Card> */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Available SIMs</CardTitle>
                         <Smartphone className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{sims.length}</div>
+                        <div className="text-2xl font-bold">{sims.filter(sim => sim.status === 'active').length}</div>
                     </CardContent>
                 </Card>
             </div>
@@ -624,12 +629,11 @@ export function UserManagement() {
                         {selectedSims.length > 0 && (
                             <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-sm text-muted-foreground">Selected:</span>
-                                {selectedSims.map((simId) => {
+                                {selectedSims.map((simId, index) => {
                                     const sim = sims.find(s => s._id === simId);
-                                    console.log("simId", simId)
                                     return (
-                                        <Badge key={simId} variant="secondary" className="gap-1">
-                                            {sim?.phoneNumber || sim?.simNumber || sim?.iccid || `${simId?.port}-${simId?.operator}`}
+                                        <Badge key={index} variant="secondary" className="gap-1">
+                                            {sim ? `Port ${sim.port} - ${sim.operator || 'N/A'}` : 'Unknown'}
                                             <X
                                                 className="h-3 w-3 cursor-pointer"
                                                 onClick={(e) => {

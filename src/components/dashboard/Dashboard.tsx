@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { authFetch } from '@/lib/api';
 import { useNavigationStore } from '@/store/useNavigationStore';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export function Dashboard() {
   const [stats, setStats] = useState(null);
@@ -33,8 +34,10 @@ export function Dashboard() {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
-  console.log("stats",stats)
+  console.log("stats", stats)
   const { activeSection, setActiveSection } = useNavigationStore();
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
   useEffect(() => {
     fetchDashboardData();
   }, []);
@@ -42,7 +45,7 @@ export function Dashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      
+
       const [statsRes, campaignsRes, devicesRes, analyticsRes] = await Promise.all([
         authFetch('/api/dashboard/stats'),
         authFetch('/api/dashboard/recent-campaigns?limit=5'),
@@ -81,9 +84,9 @@ export function Dashboard() {
             <BarChart3 className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          <Button 
-          onClick={() => setActiveSection('campaigns')}
-          size="sm" className="bg-gradient-primary shadow-primary">
+          <Button
+            onClick={() => setActiveSection('campaigns')}
+            size="sm" className="bg-gradient-primary shadow-primary">
             <Plus className="h-4 w-4 mr-2" />
             New Campaign
           </Button>
@@ -101,14 +104,16 @@ export function Dashboard() {
             variant={stats.deviceHealth?.online > 0 ? "success" : "destructive"}
             trend={{ value: 5.2, label: "from last week" }}
           />
-          <StatsCard
-            title="Active SIMs"
-            value={stats?.activeSIMs || 0}
-            description={`${stats.simHealth?.goodSignal} good signal`}
-            icon={Signal}
-            variant={stats.simHealth?.active > 0 ? "success" : "destructive"}
-            trend={{ value: -2.1, label: "SIM issues resolved" }}
-          />
+          {isAdmin && (
+            <StatsCard
+              title="Active SIMs"
+              value={stats?.activeSIMs || 0}
+              description={`${stats.simHealth?.goodSignal} good signal`}
+              icon={Signal}
+              variant={stats.simHealth?.active > 0 ? "success" : "destructive"}
+              trend={{ value: -2.1, label: "SIM issues resolved" }}
+            />
+          )}
           <StatsCard
             title="Messages Today"
             value={stats.messagesSentToday?.toLocaleString() || "0"}
@@ -255,13 +260,12 @@ export function Dashboard() {
                   <div key={campaign._id} className="p-3 border rounded-lg">
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium text-sm">{campaign.name}</span>
-                      <span className={`text-xs px-2 py-1 rounded ${
-                        campaign.status === 'active' 
-                          ? 'bg-green-100 text-green-800' 
-                          : campaign.status === 'paused'
+                      <span className={`text-xs px-2 py-1 rounded ${campaign.status === 'active'
+                        ? 'bg-green-100 text-green-800'
+                        : campaign.status === 'paused'
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-gray-100 text-gray-800'
-                      }`}>
+                        }`}>
                         {campaign.status}
                       </span>
                     </div>
@@ -275,7 +279,7 @@ export function Dashboard() {
                     </div>
                   </div>
                 ))}
-                
+
                 {recentCampaigns.length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     <Send className="h-12 w-12 mx-auto mb-2 opacity-50" />
@@ -288,7 +292,7 @@ export function Dashboard() {
                 )}
               </div>
 
-              <Button  onClick={() => setActiveSection('campaigns')} variant="outline" className="w-full">
+              <Button onClick={() => setActiveSection('campaigns')} variant="outline" className="w-full">
                 <Plus className="h-4 w-4 mr-2" />
                 View All Campaigns
               </Button>
@@ -308,19 +312,19 @@ function DashboardSkeleton() {
       <div className="animate-pulse">
         <div className="h-8 bg-gray-200 rounded w-1/4 mb-2"></div>
         <div className="h-4 bg-gray-200 rounded w-1/3 mb-6"></div>
-        
+
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 mb-6">
           {[...Array(6)].map((_, i) => (
             <div key={i} className="h-32 bg-gray-200 rounded"></div>
           ))}
         </div>
-        
+
         <div className="grid gap-6 md:grid-cols-3 mb-6">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="h-40 bg-gray-200 rounded"></div>
           ))}
         </div>
-        
+
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-6">
             <div className="h-80 bg-gray-200 rounded"></div>

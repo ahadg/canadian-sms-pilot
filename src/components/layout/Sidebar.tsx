@@ -27,24 +27,28 @@ const navigationItems = [
     label: "Dashboard",
     icon: LayoutDashboard,
     description: "Overview & monitoring",
+    //adminOnly: true, // Only admins can see dashboard
   },
   {
     id: "devices",
     label: "Devices",
     icon: Router,
     description: "Ejoin gateways & SIMs",
+    adminOnly: true, // Only admins can see devices
   },
   {
     id: "campaigns",
     label: "Campaigns",
     icon: Send,
     description: "SMS campaigns",
+    adminOnly: false, // All users can see campaigns
   },
   {
     id: "messages",
     label: "AI Messages",
     icon: MessageSquare,
     description: "Message variations",
+    adminOnly: false, // All users can see messages
   },
   // {
   //   id: "analytics",
@@ -57,12 +61,24 @@ const navigationItems = [
     label: "inbox",
     icon: MessageCircleMore,
     description: "Reports & insights",
+    adminOnly: false, // All users can see inbox
   },
 ];
 
 export function Sidebar({ }: SidebarProps) {
   const { logout, user } = useAuthStore();
   const { activeSection, navigateToSection } = useNavigationStore();
+
+  // Filter navigation items based on user role
+  const isAdmin = user?.role === 'admin';
+  const visibleNavigationItems = navigationItems.filter(item => {
+    // If item is admin-only, only show to admins
+    if (item.adminOnly) {
+      return isAdmin;
+    }
+    // Otherwise, show to all users
+    return true;
+  });
 
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-card">
@@ -79,7 +95,7 @@ export function Sidebar({ }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-2 p-4">
-        {navigationItems.map((item) => {
+        {visibleNavigationItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeSection === item.id;
 
@@ -103,24 +119,22 @@ export function Sidebar({ }: SidebarProps) {
         })}
 
         {/* Admin-only User Management */}
-        {
-          //user?.role === 'admin' 
-          true && (
-            <Button
-              variant={activeSection === "users" ? "default" : "ghost"}
-              className={cn(
-                "w-full justify-start gap-3 h-auto p-3",
-                activeSection === "users" && "bg-primary text-primary-foreground shadow-primary"
-              )}
-              onClick={() => navigateToSection("users")}
-            >
-              <Users className="h-4 w-4" />
-              <div className="text-left">
-                <div className="font-medium">User Management</div>
-                <div className="text-xs opacity-70">Manage users & SIMs</div>
-              </div>
-            </Button>
-          )}
+        {isAdmin && (
+          <Button
+            variant={activeSection === "users" ? "default" : "ghost"}
+            className={cn(
+              "w-full justify-start gap-3 h-auto p-3",
+              activeSection === "users" && "bg-primary text-primary-foreground shadow-primary"
+            )}
+            onClick={() => navigateToSection("users")}
+          >
+            <Users className="h-4 w-4" />
+            <div className="text-left">
+              <div className="font-medium">User Management</div>
+              <div className="text-xs opacity-70">Manage users & SIMs</div>
+            </div>
+          </Button>
+        )}
       </nav>
 
       <Separator />
