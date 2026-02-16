@@ -2,7 +2,7 @@ import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useAuthStore } from '@/store/useAuthStore';
 
 export const baseURL =
-import.meta.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 // Create an axios instance with defaults
 const api = axios.create({
@@ -16,11 +16,11 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const { token } = useAuthStore.getState();
-    
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    
+
     console.log('API Request:', config.method?.toUpperCase(), config.url);
     return config;
   },
@@ -71,14 +71,14 @@ export async function authFetch<T = any>(
     return response.data as any;
   } catch (error: any) {
     console.error('API request failed:', error.response?.data || error.message);
-    
+
     // Throw a more descriptive error
     const apiError = new Error(
       error.response?.data?.reason || error.response?.data?.message || 'API request failed'
     );
     (apiError as any).status = error.response?.status;
     (apiError as any).code = error.response?.data?.code;
-    
+
     throw apiError;
   }
 }
@@ -86,23 +86,23 @@ export async function authFetch<T = any>(
 // Convenience methods for common HTTP verbs
 export const apiClient = {
   // GET request
-  get: <T = any>(url: string, params?: any): Promise<T> => 
+  get: <T = any>(url: string, params?: any): Promise<T> =>
     authFetch<T>(url, { method: 'GET', params }),
 
   // POST request
-  post: <T = any>(url: string, data?: any): Promise<T> => 
+  post: <T = any>(url: string, data?: any): Promise<T> =>
     authFetch<T>(url, { method: 'POST', data }),
 
   // PUT request
-  put: <T = any>(url: string, data?: any): Promise<T> => 
+  put: <T = any>(url: string, data?: any): Promise<T> =>
     authFetch<T>(url, { method: 'PUT', data }),
 
   // PATCH request
-  patch: <T = any>(url: string, data?: any): Promise<T> => 
+  patch: <T = any>(url: string, data?: any): Promise<T> =>
     authFetch<T>(url, { method: 'PATCH', data }),
 
   // DELETE request
-  delete: <T = any>(url: string): Promise<T> => 
+  delete: <T = any>(url: string): Promise<T> =>
     authFetch<T>(url, { method: 'DELETE' }),
 };
 
@@ -122,14 +122,14 @@ export const deviceAPI = {
 
 export const authAPI = {
   // Auth methods (without token)
-  signin: (email: string, password: string) => 
+  signin: (email: string, password: string) =>
     api.post<{ user: any; token: string }>('/api/auth/signin', { email, password }),
-  
-  signup: (email: string, password: string, name: string) => 
+
+  signup: (email: string, password: string, name: string) =>
     api.post<{ user: any; token: string }>('/api/auth/signup', { email, password, name }),
-  
+
   getProfile: () => apiClient.get('/api/auth/me'),
-  changePassword: (currentPassword: string, newPassword: string) => 
+  changePassword: (currentPassword: string, newPassword: string) =>
     apiClient.put('/api/auth/change-password', { currentPassword, newPassword }),
 };
 
