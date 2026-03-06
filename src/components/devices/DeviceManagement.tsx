@@ -161,7 +161,7 @@ export function DeviceManagement() {
 
   useEffect(() => {
     loadDevices();
-    //loadAllSims();
+    loadAllSims();
   }, []);
 
   useEffect(() => {
