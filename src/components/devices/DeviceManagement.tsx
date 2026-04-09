@@ -96,6 +96,7 @@ interface SIMCard {
   todaySent: number;
   lastResetDate: string;
   lastActivity: string;
+  slot: number
   port: string;
   iccid: string;
   imsi: string;

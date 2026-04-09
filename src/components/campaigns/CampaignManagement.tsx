@@ -45,7 +45,7 @@ import { CampaignStats } from "./CampaignStats";
 import { CampaignTable } from "./CampaignTable";
 import { MessageVariationSection } from "./MessageVariationSection";
 import { EditCampaignDialog } from "./EditCampaignDialog";
-import {  Sun, Moon } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 
 // Canadian SMS rules template
 const CANADIAN_SMS_TEMPLATE = `Your message here. Reply STOP to unsubscribe.`;
@@ -98,10 +98,10 @@ export function CampaignManagement() {
     contactLists,
     refreshContactLists
   } = useContactStore();
-  
-  console.log("contactLists",contactLists)
+
+  console.log("contactLists", contactLists)
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
-  
+
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [updatingCampaign, setUpdatingCampaign] = useState(false);
@@ -112,7 +112,10 @@ export function CampaignManagement() {
     endHour: 17,
     timezone: 'America/Toronto'
   });
+  const [startAfterPrevious, setStartAfterPrevious] = useState(false);
 
+
+  // Add this function to reset the form
   const resetCreateForm = () => {
     setCampaignForm({
       name: '',
@@ -129,13 +132,13 @@ export function CampaignManagement() {
     setMessageVariationType('single_variant');
     setCustomMessageContent(CANADIAN_SMS_TEMPLATE);
     setSendingInterval({ min: 30000, max: 90000 });
-    // Reset time restrictions
     setTimeRestrictions({
       enabled: false,
       startHour: 9,
       endHour: 17,
       timezone: 'America/Toronto'
     });
+    setStartAfterPrevious(false); // Reset this too
   };
 
   // Add this handler function
@@ -162,7 +165,7 @@ export function CampaignManagement() {
 
 
 
-  
+
   const handleFetchMessageVariants = async (messageId: string): Promise<MessageVariant[]> => {
     try {
       const response = await messageAPI.getVariants(messageId);
@@ -175,40 +178,40 @@ export function CampaignManagement() {
   };
 
   // Loading states for campaign actions
-  const [loadingActions, setLoadingActions] = useState<{[key: string]: 'starting' | 'pausing' | 'resuming' | 'stopping' | null}>({});
-  
+  const [loadingActions, setLoadingActions] = useState<{ [key: string]: 'starting' | 'pausing' | 'resuming' | 'stopping' | null }>({});
+
   // Load contact lists when component mounts
   useEffect(() => {
     refreshContactLists();
   }, []); // Empty dependency array to run only once
-  
+
   // Use Zustand socket store
-  const { 
-    isConnected, 
-    campaignUpdates, 
-    socket 
+  const {
+    isConnected,
+    campaignUpdates,
+    socket
   } = useSocketStore();
 
   // Handle real-time campaign updates from socket
   useEffect(() => {
     if (campaignUpdates.length > 0) {
       console.log('Processing campaign updates:', campaignUpdates);
-      
+
       campaignUpdates.forEach(update => {
-        setCampaigns(prev => 
+        setCampaigns(prev =>
           prev.map(campaign => {
             if (campaign._id === update.campaignId) {
               const updatedCampaign = {
                 ...campaign,
                 ...update.updates,
                 // Calculate delivery rate in real-time
-                deliveryRate: update.updates.sentMessages > 0 
-                  ? (update.updates.deliveredMessages / update.updates.sentMessages) * 100 
+                deliveryRate: update.updates.sentMessages > 0
+                  ? (update.updates.deliveredMessages / update.updates.sentMessages) * 100
                   : 0,
                 // Update status if provided
                 status: update.updates.status || campaign.status
               };
-              
+
               console.log(`Updated campaign ${campaign._id}:`, updatedCampaign);
               return updatedCampaign;
             }
@@ -229,14 +232,14 @@ export function CampaignManagement() {
   const [optimizingMessage, setOptimizingMessage] = useState(false);
   const [optimizationResult, setOptimizationResult] = useState(null);
 
-  
+
   // Message variant state
   const [selectedMessageId, setSelectedMessageId] = useState<string>('');
   const [selectedAIMessage, setSelectedAIMessage] = useState<SavedMessage | null>(null);
   const [messageVariants, setMessageVariants] = useState<MessageVariant[]>([]);
   const [selectedVariantId, setSelectedVariantId] = useState<string>('');
   const [loadingVariants, setLoadingVariants] = useState(false);
-  
+
   // New message variation type state
   const [messageVariationType, setMessageVariationType] = useState<MessageVariationType>("single_variant");
   const [customMessageContent, setCustomMessageContent] = useState(CANADIAN_SMS_TEMPLATE);
@@ -287,88 +290,88 @@ export function CampaignManagement() {
   }, []);
 
   // Add this function with your other handlers
-const handleCheckSpam = async (messageContent) => {
-  if (!messageContent.trim()) {
-    toast.error('Please enter a message to check');
-    return;
-  }
+  const handleCheckSpam = async (messageContent) => {
+    if (!messageContent.trim()) {
+      toast.error('Please enter a message to check');
+      return;
+    }
 
-  setCheckingSpam(true);
-  try {
-    const response = await messageAPI.checkSpam({
-      message: messageContent,
-      companyName: "Your Company", // You might want to make this dynamic
-      messageCategory: "Promotional" // You can make this dynamic based on your needs
-    });
-   console.log("handleCheckSpam",response)
-    setSpamAnalysis(response.data.spamAnalysis);
-    toast.success('Spam analysis completed');
-  } catch (error) {
-    console.error('Error checking spam:', error);
-    toast.error('Failed to analyze spam score');
-  } finally {
-    setCheckingSpam(false);
-  }
-};
+    setCheckingSpam(true);
+    try {
+      const response = await messageAPI.checkSpam({
+        message: messageContent,
+        companyName: "Your Company", // You might want to make this dynamic
+        messageCategory: "Promotional" // You can make this dynamic based on your needs
+      });
+      console.log("handleCheckSpam", response)
+      setSpamAnalysis(response.data.spamAnalysis);
+      toast.success('Spam analysis completed');
+    } catch (error) {
+      console.error('Error checking spam:', error);
+      toast.error('Failed to analyze spam score');
+    } finally {
+      setCheckingSpam(false);
+    }
+  };
 
-const handleOptimizeMessage = async (messageContent) => {
-  if (!messageContent.trim()) {
-    toast.error('Please enter a message to optimize');
-    return;
-  }
+  const handleOptimizeMessage = async (messageContent) => {
+    if (!messageContent.trim()) {
+      toast.error('Please enter a message to optimize');
+      return;
+    }
 
-  setOptimizingMessage(true);
-  try {
-    const response = await messageAPI.optimizeMessage({
-      message: messageContent,
-      companyName: "Your Company", // Make this dynamic
-      messageCategory: "Promotional",
-      targetSpamScore: 3,
-      preserveIntent: true,
-      includeUnsubscribe: true
-    });
+    setOptimizingMessage(true);
+    try {
+      const response = await messageAPI.optimizeMessage({
+        message: messageContent,
+        companyName: "Your Company", // Make this dynamic
+        messageCategory: "Promotional",
+        targetSpamScore: 3,
+        preserveIntent: true,
+        includeUnsubscribe: true
+      });
 
-    setOptimizationResult(response.data.optimizationResult);
-    
-    // Auto-apply the optimized message
-    setCustomMessageContent(response.data.optimizationResult.optimizedMessage);
-    setCampaignForm(prev => ({
-      ...prev,
-      message_content: response.data.optimizationResult.optimizedMessage
-    }));
-    
-    toast.success(`Message optimized! Spam score reduced by ${response.data.optimizationResult.improvement}%`);
-  } catch (error) {
-    console.error('Error optimizing message:', error);
-    toast.error('Failed to optimize message');
-  } finally {
-    setOptimizingMessage(false);
-  }
-};
+      setOptimizationResult(response.data.optimizationResult);
 
-const handleApplyOptimization = () => {
-  if (optimizationResult) {
-    setCustomMessageContent(optimizationResult.optimizedMessage);
-    setCampaignForm(prev => ({
-      ...prev,
-      message_content: optimizationResult.optimizedMessage
-    }));
-    setOptimizationResult(null);
-    toast.success('Optimized message applied');
-  }
-};
+      // Auto-apply the optimized message
+      setCustomMessageContent(response.data.optimizationResult.optimizedMessage);
+      setCampaignForm(prev => ({
+        ...prev,
+        message_content: response.data.optimizationResult.optimizedMessage
+      }));
 
-const handleRevertToOriginal = () => {
-  if (optimizationResult) {
-    setCustomMessageContent(optimizationResult.originalMessage || customMessageContent);
-    setCampaignForm(prev => ({
-      ...prev,
-      message_content: optimizationResult.originalMessage || customMessageContent
-    }));
-    setOptimizationResult(null);
-    toast.success('Reverted to original message');
-  }
-};
+      toast.success(`Message optimized! Spam score reduced by ${response.data.optimizationResult.improvement}%`);
+    } catch (error) {
+      console.error('Error optimizing message:', error);
+      toast.error('Failed to optimize message');
+    } finally {
+      setOptimizingMessage(false);
+    }
+  };
+
+  const handleApplyOptimization = () => {
+    if (optimizationResult) {
+      setCustomMessageContent(optimizationResult.optimizedMessage);
+      setCampaignForm(prev => ({
+        ...prev,
+        message_content: optimizationResult.optimizedMessage
+      }));
+      setOptimizationResult(null);
+      toast.success('Optimized message applied');
+    }
+  };
+
+  const handleRevertToOriginal = () => {
+    if (optimizationResult) {
+      setCustomMessageContent(optimizationResult.originalMessage || customMessageContent);
+      setCampaignForm(prev => ({
+        ...prev,
+        message_content: optimizationResult.originalMessage || customMessageContent
+      }));
+      setOptimizationResult(null);
+      toast.success('Reverted to original message');
+    }
+  };
 
 
   // Fetch message variants when a message is selected
@@ -391,7 +394,7 @@ const handleRevertToOriginal = () => {
       const variants = response.data.variants || [];
 
       setMessageVariants(variants);
-      
+
       // Auto-select first variant if available and set to multiple variants mode
       if (variants.length > 0) {
         setSelectedVariantId(variants[0]._id);
@@ -421,9 +424,9 @@ const handleRevertToOriginal = () => {
       setSelectedVariantId('');
       setMessageVariationType("single_variant");
       setCustomMessageContent(CANADIAN_SMS_TEMPLATE);
-      setCampaignForm(prev => ({ 
-        ...prev, 
-        message_content: CANADIAN_SMS_TEMPLATE 
+      setCampaignForm(prev => ({
+        ...prev,
+        message_content: CANADIAN_SMS_TEMPLATE
       }));
       return;
     }
@@ -435,7 +438,7 @@ const handleRevertToOriginal = () => {
   // Handle variant selection
   const handleVariantSelect = (variantId: string) => {
     setSelectedVariantId(variantId);
-    
+
     const selectedVariant = messageVariants.find(v => v._id === variantId);
     if (selectedVariant) {
       setCustomMessageContent(selectedVariant.content);
@@ -449,7 +452,7 @@ const handleRevertToOriginal = () => {
   // Handle message variation type change
   const handleVariationTypeChange = (type: MessageVariationType) => {
     setMessageVariationType(type);
-    
+
     // Update campaign form based on selection
     if (type === "single_variant") {
       setCampaignForm(prev => ({
@@ -514,70 +517,70 @@ const handleRevertToOriginal = () => {
 
   // Create campaign handler
   const handleCreateCampaign = async () => {
-  if (!campaignForm.name || !campaignForm.message_content || !campaignForm.device) {
-    toast.error('Please fill in all required fields including device selection');
-    return;
-  }
-  setIsCreatingCampaign(true);
-  try {
-    const { data: contacts_lists, error: contactsError } = await contactAPI.getListById(campaignForm.contactList);
-    console.log("contacts_lists", campaignForm.contactList, contacts_lists);
-    
-    // Prepare task settings including time restrictions
-    const finalTaskSettings = {
-      ...taskSettings,
-      interval_min: sendingInterval.min,
-      interval_max: sendingInterval.max,
-      useAiGeneration: messageVariationType === "ai_random",
-      aiPrompt: messageVariationType === "ai_random" && selectedAIMessage ? selectedAIMessage.originalPrompt : "",
-      baseMessage: messageVariationType === "ai_random" && selectedAIMessage ? selectedAIMessage.baseMessage : "",
-      selectedVariantId: messageVariationType === "multiple_variants" ? selectedVariantId : null,
-      messageVariationType,
-      message: selectedAIMessage?._id || null,
-      // Add time restrictions
-      timeRestrictions: timeRestrictions.enabled ? timeRestrictions : undefined
-    };
-
-    const campaignData = {
-      name: campaignForm.name,
-      messageContent: campaignForm.message_content,
-      contactList: campaignForm.contactList || undefined,
-      status: campaignForm.status,
-      device: campaignForm.device,
-      taskSettings: finalTaskSettings,
-      totalContacts: contacts_lists?.contactList?.totalContacts || 0,
-      sentMessages: 0,
-      deliveredMessages: 0,
-      failedMessages: 0,
-      message: selectedAIMessage?._id
-    };
-
-    console.log("Creating campaign with data:", campaignData);
-    
-    const newCampaign = await createCampaign(campaignData);
-    
-    // Start processing if status is active
-    if (campaignForm.status === 'active') {
-      try {
-        await startCampaignProcessing(newCampaign._id);
-        toast.success('Campaign created and started successfully');
-      } catch (error) {
-        console.error('Error starting campaign processing:', error);
-        toast.error('Campaign created but failed to start processing');
-      }
-    } else {
-      toast.success('Campaign created successfully');
+    if (!campaignForm.name || !campaignForm.message_content || !campaignForm.device) {
+      toast.error('Please fill in all required fields including device selection');
+      return;
     }
-    
-    setIsCreateCampaignOpen(false);
-    resetCreateForm(); // Use the reset function
-      
-  } catch (error) {
-    console.error('Error creating campaign:', error);
-    toast.error('Failed to create campaign');
-  }
-  setIsCreatingCampaign(false);
-};
+    setIsCreatingCampaign(true);
+    try {
+      const { data: contacts_lists, error: contactsError } = await contactAPI.getListById(campaignForm.contactList);
+      console.log("contacts_lists", campaignForm.contactList, contacts_lists);
+
+      // Prepare task settings including time restrictions
+      const finalTaskSettings = {
+        ...taskSettings,
+        interval_min: sendingInterval.min,
+        interval_max: sendingInterval.max,
+        useAiGeneration: messageVariationType === "ai_random",
+        aiPrompt: messageVariationType === "ai_random" && selectedAIMessage ? selectedAIMessage.originalPrompt : "",
+        baseMessage: messageVariationType === "ai_random" && selectedAIMessage ? selectedAIMessage.baseMessage : "",
+        selectedVariantId: messageVariationType === "multiple_variants" ? selectedVariantId : null,
+        messageVariationType,
+        message: selectedAIMessage?._id || null,
+        // Add time restrictions
+        timeRestrictions: timeRestrictions.enabled ? timeRestrictions : undefined
+      };
+
+      const campaignData = {
+        name: campaignForm.name,
+        messageContent: campaignForm.message_content,
+        contactList: campaignForm.contactList || undefined,
+        status: campaignForm.status,
+        device: campaignForm.device,
+        taskSettings: finalTaskSettings,
+        totalContacts: contacts_lists?.contactList?.totalContacts || 0,
+        sentMessages: 0,
+        deliveredMessages: 0,
+        failedMessages: 0,
+        message: selectedAIMessage?._id
+      };
+
+      console.log("Creating campaign with data:", campaignData);
+
+      const newCampaign = await createCampaign(campaignData);
+
+      // Start processing if status is active
+      if (campaignForm.status === 'active') {
+        try {
+          await startCampaignProcessing(newCampaign._id);
+          toast.success('Campaign created and started successfully');
+        } catch (error) {
+          console.error('Error starting campaign processing:', error);
+          toast.error('Campaign created but failed to start processing');
+        }
+      } else {
+        toast.success('Campaign created successfully');
+      }
+
+      setIsCreateCampaignOpen(false);
+      resetCreateForm(); // Use the reset function
+
+    } catch (error) {
+      console.error('Error creating campaign:', error);
+      toast.error('Failed to create campaign');
+    }
+    setIsCreatingCampaign(false);
+  };
 
   // Handle campaign actions with loading states
   const handleStartCampaign = async (campaignId: string) => {
@@ -626,7 +629,7 @@ const handleRevertToOriginal = () => {
     setLoadingActions(prev => ({ ...prev, [campaignId]: 'stopping' }));
     try {
       await stopCampaign(campaignId);
-     //await updateCampaignStatus(campaignId, 'completed');
+      //await updateCampaignStatus(campaignId, 'completed');
       //toast.success('Campaign stopped successfully');
     } catch (error) {
       console.error('Error stopping campaign:', error);
@@ -715,8 +718,8 @@ const handleRevertToOriginal = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="campaignName">Campaign Name *</Label>
-                    <Input 
-                      id="campaignName" 
+                    <Input
+                      id="campaignName"
                       placeholder="Winter Sale 2024"
                       value={campaignForm.name}
                       onChange={(e) => setCampaignForm(prev => ({ ...prev, name: e.target.value }))}
@@ -724,7 +727,7 @@ const handleRevertToOriginal = () => {
                   </div>
                   <div>
                     <Label htmlFor="device">Device *</Label>
-                    <Select 
+                    <Select
                       value={campaignForm.device}
                       onValueChange={(value) => setCampaignForm(prev => ({ ...prev, device: value }))}
                     >
@@ -736,7 +739,7 @@ const handleRevertToOriginal = () => {
                           <SelectItem key={device._id} value={device._id}>
                             <div className="flex items-center gap-2">
                               <Smartphone className="h-4 w-4" />
-                              {device.name} 
+                              {device.name}
                               <Badge variant={device.status === 'online' ? 'default' : 'secondary'} className="ml-2">
                                 {device.status}
                               </Badge>
@@ -747,12 +750,12 @@ const handleRevertToOriginal = () => {
                     </Select>
                   </div>
                 </div>
-                
+
                 {/* Contact List and AI Messages */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="contactList">Contact List</Label>
-                    <Select 
+                    <Select
                       value={campaignForm.contactList}
                       onValueChange={(value) => setCampaignForm(prev => ({ ...prev, contactList: value }))}
                     >
@@ -775,7 +778,7 @@ const handleRevertToOriginal = () => {
                   </div>
                   <div>
                     <Label htmlFor="aiMessage">AI Messages</Label>
-                    <Select 
+                    <Select
                       value={selectedMessageId}
                       onValueChange={handleMessageSelect}
                     >
@@ -828,7 +831,7 @@ const handleRevertToOriginal = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="scheduleType">Schedule Type</Label>
-                    <Select 
+                    <Select
                       value={campaignForm.status}
                       onValueChange={(value) => setCampaignForm(prev => ({ ...prev, status: value as Campaign['status'] }))}
                     >
@@ -851,6 +854,19 @@ const handleRevertToOriginal = () => {
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* Add the new option when scheduled is selected */}
+                  {campaignForm.status === 'scheduled' && (
+                    <div className="flex items-center space-x-2 pt-6">
+                      <Switch
+                        checked={startAfterPrevious}
+                        onCheckedChange={setStartAfterPrevious}
+                      />
+                      <Label htmlFor="startAfterPrevious" className="text-sm font-medium">
+                        Start after previous campaign finishes
+                      </Label>
+                    </div>
+                  )}
                 </div>
 
                 {/* Sending Interval Section */}
@@ -859,17 +875,17 @@ const handleRevertToOriginal = () => {
                     <Clock className="h-4 w-4" />
                     Sending Intervals
                   </h3>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="intervalMin">Minimum Interval (seconds)</Label>
-                      <Input 
+                      <Input
                         id="intervalMin"
-                        type="number" 
+                        type="number"
                         value={sendingInterval.min / 1000}
-                        onChange={(e) => setSendingInterval(prev => ({ 
-                          ...prev, 
-                          min: (parseInt(e.target.value) || 0) * 1000 
+                        onChange={(e) => setSendingInterval(prev => ({
+                          ...prev,
+                          min: (parseInt(e.target.value) || 0) * 1000
                         }))}
                         min="0"
                         max="300"
@@ -880,13 +896,13 @@ const handleRevertToOriginal = () => {
                     </div>
                     <div>
                       <Label htmlFor="intervalMax">Maximum Interval (seconds)</Label>
-                      <Input 
+                      <Input
                         id="intervalMax"
-                        type="number" 
+                        type="number"
                         value={sendingInterval.max / 1000}
-                        onChange={(e) => setSendingInterval(prev => ({ 
-                          ...prev, 
-                          max: (parseInt(e.target.value) || 0) * 1000 
+                        onChange={(e) => setSendingInterval(prev => ({
+                          ...prev,
+                          max: (parseInt(e.target.value) || 0) * 1000
                         }))}
                         min="0"
                         max="900"
@@ -901,19 +917,19 @@ const handleRevertToOriginal = () => {
                   </div>
                 </div>
 
-                {/* <div className="border-t pt-4">
+                <div className="border-t pt-4">
                   <h3 className="font-medium mb-3 flex items-center gap-2">
                     <Clock className="h-4 w-4" />
                     Time Restrictions (Optional)
                   </h3>
-                  
+
                   <div className="space-y-4">
                     <div className="flex items-center space-x-2">
                       <Switch
                         checked={timeRestrictions.enabled}
-                        onCheckedChange={(checked) => setTimeRestrictions(prev => ({ 
-                          ...prev, 
-                          enabled: checked 
+                        onCheckedChange={(checked) => setTimeRestrictions(prev => ({
+                          ...prev,
+                          enabled: checked
                         }))}
                       />
                       <Label htmlFor="timeRestrictions" className="text-sm font-medium">
@@ -928,11 +944,11 @@ const handleRevertToOriginal = () => {
                             <Sun className="h-4 w-4" />
                             Start Time
                           </Label>
-                          <Select 
+                          <Select
                             value={timeRestrictions.startHour.toString()}
-                            onValueChange={(value) => setTimeRestrictions(prev => ({ 
-                              ...prev, 
-                              startHour: parseInt(value) 
+                            onValueChange={(value) => setTimeRestrictions(prev => ({
+                              ...prev,
+                              startHour: parseInt(value)
                             }))}
                           >
                             <SelectTrigger>
@@ -941,9 +957,9 @@ const handleRevertToOriginal = () => {
                             <SelectContent>
                               {Array.from({ length: 24 }, (_, i) => (
                                 <SelectItem key={i} value={i.toString()}>
-                                  {i === 0 ? '12 AM' : 
-                                  i === 12 ? '12 PM' : 
-                                  i < 12 ? `${i} AM` : `${i - 12} PM`}
+                                  {i === 0 ? '12 AM' :
+                                    i === 12 ? '12 PM' :
+                                      i < 12 ? `${i} AM` : `${i - 12} PM`}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -955,11 +971,11 @@ const handleRevertToOriginal = () => {
                             <Moon className="h-4 w-4" />
                             End Time
                           </Label>
-                          <Select 
+                          <Select
                             value={timeRestrictions.endHour.toString()}
-                            onValueChange={(value) => setTimeRestrictions(prev => ({ 
-                              ...prev, 
-                              endHour: parseInt(value) 
+                            onValueChange={(value) => setTimeRestrictions(prev => ({
+                              ...prev,
+                              endHour: parseInt(value)
                             }))}
                           >
                             <SelectTrigger>
@@ -968,9 +984,9 @@ const handleRevertToOriginal = () => {
                             <SelectContent>
                               {Array.from({ length: 24 }, (_, i) => (
                                 <SelectItem key={i} value={i.toString()}>
-                                  {i === 0 ? '12 AM' : 
-                                  i === 12 ? '12 PM' : 
-                                  i < 12 ? `${i} AM` : `${i - 12} PM`}
+                                  {i === 0 ? '12 AM' :
+                                    i === 12 ? '12 PM' :
+                                      i < 12 ? `${i} AM` : `${i - 12} PM`}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -979,11 +995,11 @@ const handleRevertToOriginal = () => {
 
                         <div className="col-span-2">
                           <Label htmlFor="timezone" className="mb-2">Timezone</Label>
-                          <Select 
+                          <Select
                             value={timeRestrictions.timezone}
-                            onValueChange={(value) => setTimeRestrictions(prev => ({ 
-                              ...prev, 
-                              timezone: value 
+                            onValueChange={(value) => setTimeRestrictions(prev => ({
+                              ...prev,
+                              timezone: value
                             }))}
                           >
                             <SelectTrigger>
@@ -1006,15 +1022,15 @@ const handleRevertToOriginal = () => {
                             <div>
                               Messages will only be sent between{' '}
                               <span className="font-semibold">
-                                {timeRestrictions.startHour === 0 ? '12 AM' : 
-                                timeRestrictions.startHour === 12 ? '12 PM' : 
-                                timeRestrictions.startHour < 12 ? `${timeRestrictions.startHour} AM` : `${timeRestrictions.startHour - 12} PM`}
+                                {timeRestrictions.startHour === 0 ? '12 AM' :
+                                  timeRestrictions.startHour === 12 ? '12 PM' :
+                                    timeRestrictions.startHour < 12 ? `${timeRestrictions.startHour} AM` : `${timeRestrictions.startHour - 12} PM`}
                               </span>{' '}
                               and{' '}
                               <span className="font-semibold">
-                                {timeRestrictions.endHour === 0 ? '12 AM' : 
-                                timeRestrictions.endHour === 12 ? '12 PM' : 
-                                timeRestrictions.endHour < 12 ? `${timeRestrictions.endHour} AM` : `${timeRestrictions.endHour - 12} PM`}
+                                {timeRestrictions.endHour === 0 ? '12 AM' :
+                                  timeRestrictions.endHour === 12 ? '12 PM' :
+                                    timeRestrictions.endHour < 12 ? `${timeRestrictions.endHour} AM` : `${timeRestrictions.endHour - 12} PM`}
                               </span>{' '}
                               ({timeRestrictions.timezone})
                             </div>
@@ -1026,21 +1042,21 @@ const handleRevertToOriginal = () => {
                       </div>
                     )}
                   </div>
-                </div> */}
+                </div>
 
                 {/* Advanced Task Settings */}
                 <div className="border-t pt-4">
                   <h3 className="font-medium mb-3">Advanced Settings</h3>
-                  
+
                   {/* Character Set and Coding */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="charset">Character Set</Label>
-                      <Select 
+                      <Select
                         value={taskSettings.charset}
-                        onValueChange={(value: "UTF-8" | "Base64" | "PDU") => setTaskSettings(prev => ({ 
-                          ...prev, 
-                          charset: value 
+                        onValueChange={(value: "UTF-8" | "Base64" | "PDU") => setTaskSettings(prev => ({
+                          ...prev,
+                          charset: value
                         }))}
                       >
                         <SelectTrigger>
@@ -1055,11 +1071,11 @@ const handleRevertToOriginal = () => {
                     </div>
                     <div>
                       <Label htmlFor="coding">Message Coding</Label>
-                      <Select 
+                      <Select
                         value={taskSettings.coding.toString()}
-                        onValueChange={(value) => setTaskSettings(prev => ({ 
-                          ...prev, 
-                          coding: parseInt(value) as 0 | 1 | 2 
+                        onValueChange={(value) => setTaskSettings(prev => ({
+                          ...prev,
+                          coding: parseInt(value) as 0 | 1 | 2
                         }))}
                       >
                         <SelectTrigger>
@@ -1080,9 +1096,9 @@ const handleRevertToOriginal = () => {
                       <Switch
                         id="sdr"
                         checked={taskSettings.sdr}
-                        onCheckedChange={(checked) => setTaskSettings(prev => ({ 
-                          ...prev, 
-                          sdr: checked 
+                        onCheckedChange={(checked) => setTaskSettings(prev => ({
+                          ...prev,
+                          sdr: checked
                         }))}
                       />
                       <Label htmlFor="sdr" className="text-sm">SDR Report</Label>
@@ -1091,9 +1107,9 @@ const handleRevertToOriginal = () => {
                       <Switch
                         id="fdr"
                         checked={taskSettings.fdr}
-                        onCheckedChange={(checked) => setTaskSettings(prev => ({ 
-                          ...prev, 
-                          fdr: checked 
+                        onCheckedChange={(checked) => setTaskSettings(prev => ({
+                          ...prev,
+                          fdr: checked
                         }))}
                       />
                       <Label htmlFor="fdr" className="text-sm">FDR Report</Label>
@@ -1102,9 +1118,9 @@ const handleRevertToOriginal = () => {
                       <Switch
                         id="dr"
                         checked={taskSettings.dr}
-                        onCheckedChange={(checked) => setTaskSettings(prev => ({ 
-                          ...prev, 
-                          dr: checked 
+                        onCheckedChange={(checked) => setTaskSettings(prev => ({
+                          ...prev,
+                          dr: checked
                         }))}
                       />
                       <Label htmlFor="dr" className="text-sm">DR Report</Label>
@@ -1114,30 +1130,30 @@ const handleRevertToOriginal = () => {
 
                 {/* Action Buttons */}
                 <div className="flex gap-2 pt-4">
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     className="flex-1"
                     onClick={() => setIsCreateCampaignOpen(false)}
                   >
                     Cancel
                   </Button>
-                  <Button 
-                  className="flex-1 bg-blue-600 hover:bg-blue-700" 
-                  onClick={handleCreateCampaign}
-                  disabled={!campaignForm.name || !campaignForm.message_content || !campaignForm.device || isCreatingCampaign}
-                >
-                  {isCreatingCampaign ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Creating Campaign...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="h-4 w-4 mr-2" />
-                      Create Campaign
-                    </>
-                  )}
-                </Button>
+                  <Button
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                    onClick={handleCreateCampaign}
+                    disabled={!campaignForm.name || !campaignForm.message_content || !campaignForm.device || isCreatingCampaign}
+                  >
+                    {isCreatingCampaign ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Creating Campaign...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-2" />
+                        Create Campaign
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
             </DialogContent>
@@ -1155,7 +1171,7 @@ const handleRevertToOriginal = () => {
         <TabsContent value="campaigns" className="space-y-6">
           {/* Campaign Stats */}
           <CampaignStats campaigns={campaigns} />
-        
+
           <CampaignTable
             campaigns={campaigns}
             loadingActions={loadingActions}
@@ -1215,7 +1231,7 @@ const handleRevertToOriginal = () => {
           <div className="space-y-4">
             <div>
               <Label htmlFor="contactListName">Contact List Name</Label>
-              <Input 
+              <Input
                 id="contactListName"
                 placeholder="My Contact List"
                 value={contactListName}
