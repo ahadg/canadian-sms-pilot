@@ -96,6 +96,9 @@ export function CampaignTable({
                           )}
                           {(campaign.taskSettings?.messageVariantType === 'ai_random' || 
                             campaign.pauseReason === 'daily_limit_reached' || 
+                            campaign.pauseReason === 'no_available_sims' ||
+                            campaign.pauseReason === 'no_assigned_sims' ||
+                            campaign.pauseReason === 'sim_error' ||
                             campaign.pauseReason === 'resume_requested') && (
                             <div className="flex flex-wrap gap-1.5">
                               {campaign.taskSettings?.messageVariantType === 'ai_random' && (
@@ -108,6 +111,24 @@ export function CampaignTable({
                                 <Badge variant="secondary" className="flex items-center gap-1 px-2 py-0.5 text-xs bg-amber-50 text-amber-700 border-amber-200">
                                   <AlertTriangle className="h-3 w-3" />
                                   Daily Limit
+                                </Badge>
+                              )}
+                              {campaign.pauseReason === 'no_assigned_sims' && (
+                                <Badge variant="secondary" className="flex items-center gap-1 px-2 py-0.5 text-xs bg-rose-50 text-rose-700 border-rose-200">
+                                  <AlertTriangle className="h-3 w-3" />
+                                  No Assigned SIMs
+                                </Badge>
+                              )}
+                              {campaign.pauseReason === 'no_available_sims' && (
+                                <Badge variant="secondary" className="flex items-center gap-1 px-2 py-0.5 text-xs bg-orange-50 text-orange-700 border-orange-200">
+                                  <AlertTriangle className="h-3 w-3" />
+                                  No Active SIMs
+                                </Badge>
+                              )}
+                              {campaign.pauseReason === 'sim_error' && (
+                                <Badge variant="secondary" className="flex items-center gap-1 px-2 py-0.5 text-xs bg-red-50 text-red-700 border-red-200">
+                                  <AlertTriangle className="h-3 w-3" />
+                                  SIM Error
                                 </Badge>
                               )}
                               {campaign.pauseReason === "resume_requested" && (

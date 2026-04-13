@@ -40,6 +40,7 @@ import { useContactStore } from "@/store/useContactStore";
 import { ContactManagement } from "./ContactManagement";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CampaignDetailsDialog } from "./CampaignDetailsDialog";
 import { CampaignStats } from "./CampaignStats";
 import { CampaignTable } from "./CampaignTable";
@@ -680,12 +681,7 @@ export function CampaignManagement() {
   };
 
   if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
-        <span className="ml-2">Loading campaigns...</span>
-      </div>
-    );
+    return <CampaignManagementSkeleton />;
   }
 
   return (
@@ -1249,6 +1245,79 @@ export function CampaignManagement() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function CampaignManagementSkeleton() {
+  return (
+    <div className="flex-1 space-y-6 p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-72" />
+          <Skeleton className="h-4 w-96 max-w-full" />
+        </div>
+        <Skeleton className="h-10 w-36 rounded-md" />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        {[...Array(3)].map((_, index) => (
+          <div key={index} className="rounded-xl border bg-card p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-8 w-8 rounded-full" />
+            </div>
+            <Skeleton className="mt-5 h-8 w-20" />
+            <Skeleton className="mt-3 h-3 w-32" />
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="rounded-xl border bg-card p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-9 w-28 rounded-md" />
+            </div>
+
+            <div className="space-y-4">
+              {[...Array(5)].map((_, index) => (
+                <div key={index} className="grid grid-cols-6 gap-4 items-center">
+                  <Skeleton className="h-5 col-span-2" />
+                  <Skeleton className="h-5 col-span-1" />
+                  <Skeleton className="h-5 col-span-1" />
+                  <Skeleton className="h-5 col-span-1" />
+                  <Skeleton className="h-9 col-span-1 rounded-md" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-xl border bg-card p-6 shadow-sm">
+            <Skeleton className="h-6 w-40 mb-5" />
+            <div className="space-y-4">
+              {[...Array(4)].map((_, index) => (
+                <div key={index} className="space-y-2">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-10 w-full rounded-md" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-card p-6 shadow-sm">
+            <Skeleton className="h-6 w-32 mb-4" />
+            <div className="space-y-3">
+              {[...Array(3)].map((_, index) => (
+                <Skeleton key={index} className="h-16 w-full rounded-lg" />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

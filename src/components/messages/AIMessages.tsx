@@ -42,6 +42,7 @@ import {
 import { useAuthStore } from "@/store/useAuthStore";
 import { messageAPI } from "@/lib/api/messages";
 import { toast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 interface MessageVariant {
   _id?: string;
@@ -101,6 +102,7 @@ const DEFAULT_SETTINGS: GenerationSettings = {
 const TONE_OPTIONS = ['Professional', 'Friendly', 'Casual', 'Urgent', 'Formal', 'Conversational'];
 const LANGUAGE_OPTIONS = ['English', 'French', 'Spanish', 'German'];
 const CATEGORY_OPTIONS = ["Notification","Alert",'Promotional', 'Transactional', 'Reminder', 'Welcome', 'Survey', 'Update'];
+const DEFAULT_CATEGORY = "Notification";
 
 // MongoDB database operations using your API routes
 const messageDatabase = {
@@ -217,11 +219,17 @@ export function AIMessages() {
   
   // Form states
   const [messageName, setMessageName] = useState('');
-  const [category, setCategory] = useState('');
+  const [category, setCategory] = useState(DEFAULT_CATEGORY);
   const [prompt, setPrompt] = useState('');
   const [settings, setSettings] = useState<GenerationSettings>(DEFAULT_SETTINGS);
   const [generatedVariants, setGeneratedVariants] = useState<MessageVariant[]>([]);
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
+  const [generatorErrors, setGeneratorErrors] = useState<{
+    messageName?: string;
+    prompt?: string;
+    companyName?: string;
+    companyAddress?: string;
+  }>({});
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -239,7 +247,27 @@ export function AIMessages() {
   };
 
   const generateVariants = async () => {
-    if (!prompt.trim() || !messageName.trim()) return;
+    const errors: typeof generatorErrors = {};
+
+    if (!messageName.trim()) {
+      errors.messageName = "Message name is required";
+    }
+
+    if (!prompt.trim()) {
+      errors.prompt = "Message prompt is required";
+    }
+
+    if (!settings.companyName.trim()) {
+      errors.companyName = "Company name is required";
+    }
+
+    if (!settings.companyAddress?.trim()) {
+      errors.companyAddress = "Company address is required";
+    }
+
+    setGeneratorErrors(errors);
+
+    if (Object.keys(errors).length > 0) return;
     
     setIsGenerating(true);
     
@@ -322,7 +350,7 @@ export function AIMessages() {
 
   const resetForm = () => {
     setMessageName('');
-    setCategory('');
+    setCategory(DEFAULT_CATEGORY);
     setPrompt('');
     setSettings(DEFAULT_SETTINGS);
     setGeneratedVariants([]);
@@ -353,6 +381,9 @@ export function AIMessages() {
 
   const updateSettings = (key: keyof GenerationSettings, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+    if (key === "companyName" || key === "companyAddress") {
+      setGeneratorErrors(prev => ({ ...prev, [key]: undefined }));
+    }
   };
 
   const getToneColor = (tone: string) => {
@@ -433,10 +464,17 @@ export function AIMessages() {
                       <Label>Message Name *</Label>
                       <Input
                         value={messageName}
-                        onChange={(e) => setMessageName(e.target.value)}
+                        onChange={(e) => {
+                          setMessageName(e.target.value);
+                          setGeneratorErrors(prev => ({ ...prev, messageName: undefined }));
+                        }}
                         placeholder="e.g., Black Friday Sale"
                         required
+                        className={cn(generatorErrors.messageName && "border-destructive focus-visible:ring-destructive")}
                       />
+                      {generatorErrors.messageName && (
+                        <p className="mt-1 text-sm text-destructive">{generatorErrors.messageName}</p>
+                      )}
                     </div>
                     
                     <div>
@@ -461,7 +499,11 @@ export function AIMessages() {
                       onChange={(e) => updateSettings('companyName', e.target.value)}
                       placeholder="Your Company Name"
                       required
+                      className={cn(generatorErrors.companyName && "border-destructive focus-visible:ring-destructive")}
                     />
+                    {generatorErrors.companyName && (
+                      <p className="mt-1 text-sm text-destructive">{generatorErrors.companyName}</p>
+                    )}
                   </div>
 
                   <div>
@@ -491,19 +533,25 @@ export function AIMessages() {
                         <Label className="flex items-center gap-2 text-sm">
                           <MapPin className="h-4 w-4" />
                           Company Address
-                          <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
-                            Recommended
+                          <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
+                            Required
                           </Badge>
                         </Label>
                         <Input
                           value={settings.companyAddress || ''}
                           onChange={(e) => updateSettings('companyAddress', e.target.value)}
                           placeholder="123 Main St, City, Province, Postal Code"
-                          className="mt-1"
+                          className={cn(
+                            "mt-1",
+                            generatorErrors.companyAddress && "border-destructive focus-visible:ring-destructive"
+                          )}
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          Required by CASL for proper sender identification
+                          Required for CASL-friendly sender identification
                         </p>
+                        {generatorErrors.companyAddress && (
+                          <p className="mt-1 text-sm text-destructive">{generatorErrors.companyAddress}</p>
+                        )}
                       </div>
 
                       <div>
@@ -643,11 +691,20 @@ export function AIMessages() {
                     <Label>Message Prompt *</Label>
                     <Textarea
                       value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
+                      onChange={(e) => {
+                        setPrompt(e.target.value);
+                        setGeneratorErrors(prev => ({ ...prev, prompt: undefined }));
+                      }}
                       placeholder="Describe the message you want to create. E.g., 'Create a promotional message for a 20% discount on all products, valid for today only.'"
-                      className="min-h-[100px] mt-2"
+                      className={cn(
+                        "min-h-[100px] mt-2",
+                        generatorErrors.prompt && "border-destructive focus-visible:ring-destructive"
+                      )}
                       required
                     />
+                    {generatorErrors.prompt && (
+                      <p className="mt-1 text-sm text-destructive">{generatorErrors.prompt}</p>
+                    )}
                   </div>
 
                   <div>
@@ -663,7 +720,7 @@ export function AIMessages() {
                   <div className="flex gap-2">
                     <Button 
                       onClick={generateVariants} 
-                      disabled={isGenerating || !prompt.trim() || !messageName.trim()}
+                      disabled={isGenerating}
                       className="flex-1"
                     >
                       {isGenerating ? (

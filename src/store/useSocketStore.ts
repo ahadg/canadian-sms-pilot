@@ -258,6 +258,37 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       }));
     });
 
+    socket.on('campaign-status-change', (data: any) => {
+      console.log('Received campaign status change:', data);
+
+      const reasonLabels: Record<string, string> = {
+        outside_allowed_hours: 'Outside allowed hours',
+        within_hours_auto_resume: 'Within allowed hours',
+        no_available_sims: 'No active SIMs available for this campaign',
+        no_assigned_sims: 'No SIMs are assigned to this user',
+        sim_error: 'SIM configuration error',
+        daily_limit_reached: 'Daily SIM limit reached',
+        campaign_started: 'Campaign started',
+        campaign_resumed: 'Campaign resumed',
+        campaign_finished: 'Campaign completed',
+        manual_stop: 'Campaign stopped'
+      };
+
+      const statusText = data?.statusUpdate?.newStatus || 'updated';
+      const reason = data?.statusUpdate?.reason;
+      const description = reason ? (reasonLabels[reason] || reason) : undefined;
+
+      if (statusText === 'paused') {
+        toast.error(`${data?.campaignName || 'Campaign'} paused`, {
+          description
+        });
+      } else {
+        toast.info(`${data?.campaignName || 'Campaign'} ${statusText}`, {
+          description
+        });
+      }
+    });
+
     socket.on('device-status-update', (data: any) => {
       console.log('Received device status update:', data);
       set(state => ({

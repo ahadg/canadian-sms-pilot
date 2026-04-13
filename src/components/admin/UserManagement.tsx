@@ -83,6 +83,13 @@ interface SimCard {
     simNumber?: string; // For display purposes
 }
 
+interface UserFormErrors {
+    name?: string;
+    email?: string;
+    password?: string;
+    role?: string;
+}
+
 export function UserManagement() {
     const [users, setUsers] = useState<User[]>([]);
     const [sims, setSims] = useState<SimCard[]>([]);
@@ -98,6 +105,7 @@ export function UserManagement() {
         password: "",
         role: "user" as 'admin' | 'user',
     });
+    const [formErrors, setFormErrors] = useState<UserFormErrors>({});
     const [selectedSims, setSelectedSims] = useState<string[]>([]);
 
     const { token } = useAuthStore();
@@ -145,8 +153,52 @@ export function UserManagement() {
         fetchSims();
     }, []);
 
+    const resetAddUserForm = () => {
+        setFormData({ name: "", email: "", password: "", role: "user" });
+        setFormErrors({});
+    };
+
+    const validateAddUserForm = () => {
+        const errors: UserFormErrors = {};
+        const trimmedName = formData.name.trim();
+        const trimmedEmail = formData.email.trim();
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!trimmedName) {
+            errors.name = "Name is required";
+        } else if (trimmedName.length < 2) {
+            errors.name = "Name must be at least 2 characters";
+        }
+
+        if (!trimmedEmail) {
+            errors.email = "Email is required";
+        } else if (!emailRegex.test(trimmedEmail)) {
+            errors.email = "Enter a valid email address";
+        }
+
+        if (!formData.password) {
+            errors.password = "Password is required";
+        } else if (formData.password.length < 6) {
+            errors.password = "Password must be at least 6 characters";
+        }
+
+        if (!["admin", "user"].includes(formData.role)) {
+            errors.role = "Please select a valid role";
+        }
+
+        setFormErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
+    const handleAddFormFieldChange = (field: keyof typeof formData, value: string) => {
+        setFormData((prev) => ({ ...prev, [field]: value }));
+        setFormErrors((prev) => ({ ...prev, [field]: undefined }));
+    };
+
     // Add user
     const handleAddUser = async () => {
+        if (!validateAddUserForm()) return;
+
         try {
             const response = await fetch(`${API_BASE_URL}/api/users`, {
                 method: 'POST',
@@ -168,7 +220,7 @@ export function UserManagement() {
             });
 
             setIsAddDialogOpen(false);
-            setFormData({ name: "", email: "", password: "", role: "user" });
+            resetAddUserForm();
             fetchUsers();
         } catch (error: any) {
             toast({
@@ -354,9 +406,14 @@ export function UserManagement() {
                                 <Input
                                     id="name"
                                     value={formData.name}
-                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    onChange={(e) => handleAddFormFieldChange("name", e.target.value)}
                                     placeholder="John Doe"
+                                    aria-invalid={Boolean(formErrors.name)}
+                                    className={cn(formErrors.name && "border-destructive focus-visible:ring-destructive")}
                                 />
+                                {formErrors.name && (
+                                    <p className="text-sm text-destructive">{formErrors.name}</p>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="email">Email</Label>
@@ -364,9 +421,14 @@ export function UserManagement() {
                                     id="email"
                                     type="email"
                                     value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                    onChange={(e) => handleAddFormFieldChange("email", e.target.value)}
                                     placeholder="john@example.com"
+                                    aria-invalid={Boolean(formErrors.email)}
+                                    className={cn(formErrors.email && "border-destructive focus-visible:ring-destructive")}
                                 />
+                                {formErrors.email && (
+                                    <p className="text-sm text-destructive">{formErrors.email}</p>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="password">Password</Label>
@@ -374,17 +436,22 @@ export function UserManagement() {
                                     id="password"
                                     type="password"
                                     value={formData.password}
-                                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                    onChange={(e) => handleAddFormFieldChange("password", e.target.value)}
                                     placeholder="••••••••"
+                                    aria-invalid={Boolean(formErrors.password)}
+                                    className={cn(formErrors.password && "border-destructive focus-visible:ring-destructive")}
                                 />
+                                {formErrors.password && (
+                                    <p className="text-sm text-destructive">{formErrors.password}</p>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="role">Role</Label>
                                 <Select
                                     value={formData.role}
-                                    onValueChange={(value: 'admin' | 'user') => setFormData({ ...formData, role: value })}
+                                    onValueChange={(value: 'admin' | 'user') => handleAddFormFieldChange("role", value)}
                                 >
-                                    <SelectTrigger>
+                                    <SelectTrigger className={cn(formErrors.role && "border-destructive focus:ring-destructive")}>
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -392,10 +459,19 @@ export function UserManagement() {
                                         <SelectItem value="admin">Admin</SelectItem>
                                     </SelectContent>
                                 </Select>
+                                {formErrors.role && (
+                                    <p className="text-sm text-destructive">{formErrors.role}</p>
+                                )}
                             </div>
                         </div>
                         <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setIsAddDialogOpen(false);
+                                    resetAddUserForm();
+                                }}
+                            >
                                 Cancel
                             </Button>
                             <Button onClick={handleAddUser}>Add User</Button>
