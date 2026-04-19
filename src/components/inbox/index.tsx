@@ -76,10 +76,13 @@ export function Inbox() {
     loadMessages,
     markAsRead,
     sendSMS,
-    fetchConversations,
+    loadMoreConversations,
     fetchConversation,
     markConversationAsRead,
-    isConversationLoading, 
+    isConversationLoading,
+    conversationsHasMore,
+    isLoadingMoreConversations,
+    totalConversations,
     setConversationLoading
   } = useMessagesStore();
 
@@ -264,22 +267,6 @@ export function Inbox() {
     filterMessages(activeTab);
   }, [messages, filters, activeTab, filterMessages]);
 
-  const hasFetchedRef = useRef(false);
-
-  useEffect(() => {
-    if (!isAuthenticated || !selectedDevice) return;
-    if (messages.length === 0) return;
-    if (hasFetchedRef.current) return;
-  
-    hasFetchedRef.current = true;
-    fetchConversations(selectedDevice._id);
-  }, [isAuthenticated, selectedDevice?._id, messages.length, fetchConversations]);
-  
-  // reset when device changes so you can fetch for the new device
-  useEffect(() => {
-    hasFetchedRef.current = false;
-  }, [selectedDevice?._id]);
-  
   if (!isAuthenticated) {
     return (
       <div className="flex-1 flex items-center justify-center p-6">
@@ -480,7 +467,7 @@ export function Inbox() {
                 <MessageSquare className="h-5 w-5" />
                 Conversations
                 <Badge variant="secondary" className="ml-2">
-                  {filteredConversations.length}
+                  {totalConversations}
                 </Badge>
               </CardTitle>
               
@@ -561,64 +548,86 @@ export function Inbox() {
                     )}
                   </div>
                 ) : (
-                  filteredConversations.map((conversation,i) => (
-                    <div
-                    key={`${conversation.phoneNumber ?? "unknown"}-${conversation.port ?? "p"}-${conversation.slot ?? "s"}::${conversation.simId ?? "nosim"}::${i}`}
-                      className={`p-4 border-b cursor-pointer hover:bg-muted/50 transition-colors ${
-                        currentConversation?.phoneNumber === conversation.phoneNumber && 
-                        currentConversation?.port === conversation.port && 
-                        currentConversation?.slot === conversation.slot ? 
-                        'bg-muted border-l-4 border-l-primary' : ''
-                      } ${conversation.unreadCount > 0 ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
-                      onClick={() => handleConversationClick(conversation)}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <User className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium text-sm truncate" title={
-                            conversation.contact?.firstName && conversation.contact?.lastName 
-                              ? `${conversation.contact.firstName} ${conversation.contact.lastName}`
-                              : conversation.phoneNumber || 'Unknown'
-                          }>
-                            {conversation.contact?.firstName && conversation.contact?.lastName 
-                              ? `${conversation.contact.firstName} ${conversation.contact.lastName}`
-                              : conversation.phoneNumber || 'Unknown'
-                            }
+                  <>
+                    {filteredConversations.map((conversation,i) => (
+                      <div
+                      key={`${conversation.phoneNumber ?? "unknown"}-${conversation.port ?? "p"}-${conversation.slot ?? "s"}::${conversation.simId ?? "nosim"}::${i}`}
+                        className={`p-4 border-b cursor-pointer hover:bg-muted/50 transition-colors ${
+                          currentConversation?.phoneNumber === conversation.phoneNumber && 
+                          currentConversation?.port === conversation.port && 
+                          currentConversation?.slot === conversation.slot ? 
+                          'bg-muted border-l-4 border-l-primary' : ''
+                        } ${conversation.unreadCount > 0 ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
+                        onClick={() => handleConversationClick(conversation)}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <User className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium text-sm truncate" title={
+                              conversation.contact?.firstName && conversation.contact?.lastName 
+                                ? `${conversation.contact.firstName} ${conversation.contact.lastName}`
+                                : conversation.phoneNumber || 'Unknown'
+                            }>
+                              {conversation.contact?.firstName && conversation.contact?.lastName 
+                                ? `${conversation.contact.firstName} ${conversation.contact.lastName}`
+                                : conversation.phoneNumber || 'Unknown'
+                              }
+                            </span>
+                            {conversation.unreadCount > 0 && (
+                              <Badge variant="default" className="bg-blue-500 text-white text-xs px-1 py-0">
+                                {conversation.unreadCount}
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                            {formatDate(conversation.lastTimestamp)}
                           </span>
-                          {conversation.unreadCount > 0 && (
-                            <Badge variant="default" className="bg-blue-500 text-white text-xs px-1 py-0">
-                              {conversation.unreadCount}
+                        </div>
+                        
+                        <p 
+                          className="text-sm text-muted-foreground line-clamp-2 mb-2 break-words"
+                          title={decodeBase64(conversation.lastMessage)}
+                        >
+                          {decodeBase64(conversation.lastMessage)}
+                        </p>
+                        
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <PhoneIcon className="h-3 w-3" />
+                          <span>Port {conversation.port}-{conversation.slot}</span>
+                          {conversation.lastDirection === 'inbound' ? (
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
+                              In
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                              Out
                             </Badge>
                           )}
+                          {conversation.contact?.isReport && <PhoneOffIcon className="h-3 w-3" color="red" />}
                         </div>
-                        <span className="text-xs text-muted-foreground flex-shrink-0">
-                          {formatDate(conversation.lastTimestamp)}
-                        </span>
                       </div>
-                      
-                      <p 
-                        className="text-sm text-muted-foreground line-clamp-2 mb-2 break-words"
-                        title={decodeBase64(conversation.lastMessage)}
-                      >
-                        {decodeBase64(conversation.lastMessage)}
-                      </p>
-                      
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <PhoneIcon className="h-3 w-3" />
-                        <span>Port {conversation.port}-{conversation.slot}</span>
-                        {conversation.lastDirection === 'inbound' ? (
-                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
-                            In
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
-                            Out
-                          </Badge>
-                        )}
-                        {conversation.contact?.isReport && <PhoneOffIcon className="h-3 w-3" color="red" />}
+                    ))}
+
+                    {conversationsHasMore && (
+                      <div className="p-4 border-t bg-background/80 backdrop-blur-sm">
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={loadMoreConversations}
+                          disabled={isLoadingMoreConversations}
+                        >
+                          {isLoadingMoreConversations ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                              Loading more conversations...
+                            </>
+                          ) : (
+                            'Load More'
+                          )}
+                        </Button>
                       </div>
-                    </div>
-                  ))
+                    )}
+                  </>
                 )}
               </div>
             </CardContent>

@@ -29,6 +29,7 @@ interface Conversation {
   slot: number;
   lastMessage: string;
   lastTimestamp: string;
+  lastDirection?: 'inbound' | 'outbound';
   unreadCount: number;
   messageCount: number;
   simId: string;
@@ -61,6 +62,10 @@ interface MessagesState {
   conversations: Conversation[];
   currentConversation: Conversation | null;
   isConversationLoading: boolean;
+  conversationsHasMore: boolean;
+  conversationsOffset: number;
+  isLoadingMoreConversations: boolean;
+  totalConversations: number;
   
   // Actions
   setConversationLoading: (loading: boolean) => void;
@@ -76,7 +81,9 @@ interface MessagesState {
   setConversations: (conversations: Conversation[]) => void;
   setCurrentConversation: (conversation: Conversation | null) => void;
   sendSMS: (params: SendSMSParams) => Promise<void>;
-  fetchConversations: (deviceId: string) => Promise<void>;
+  fetchConversations: (deviceId: string, options?: { append?: boolean }) => Promise<void>;
+  loadMoreConversations: () => Promise<void>;
+  resetConversationPagination: () => void;
   fetchConversation: (simId,contactId,phoneNumber: string, port: number, slot: number, deviceId: string) => Promise<void>;
   
   // Async Actions
@@ -108,6 +115,8 @@ const initialFilters: InboxFilters = {
   dateTo: ''
 };
 
+const CONVERSATIONS_PAGE_SIZE = 100;
+
 export const useMessagesStore = create<MessagesState>((set, get) => ({
   // Initial State
   messages: [],
@@ -121,6 +130,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   conversations: [],
   currentConversation: null,
   isConversationLoading: false,
+  conversationsHasMore: false,
+  conversationsOffset: 0,
+  isLoadingMoreConversations: false,
+  totalConversations: 0,
 
   // Sync State Actions
   setConversationLoading: (isConversationLoading) => set({ isConversationLoading }),
@@ -134,6 +147,13 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   setSelectedDevice: (selectedDevice) => set({ selectedDevice }),
   setConversations: (conversations) => set({ conversations }),
   setCurrentConversation: (currentConversation) => set({ currentConversation }),
+  resetConversationPagination: () => set({
+    conversations: [],
+    conversationsHasMore: false,
+    conversationsOffset: 0,
+    isLoadingMoreConversations: false,
+    totalConversations: 0,
+  }),
 
   // Filter Actions
   updateFilter: (key, value) => {
@@ -146,20 +166,60 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     set({ filters: initialFilters });
   },
 
-  fetchConversations: async (deviceId: string) => {
+  fetchConversations: async (deviceId: string, options = {}) => {
+    const { append = false } = options;
+    const currentOffset = append ? get().conversationsOffset : 0;
+    const includeTotal = !append;
+
+    if (append) {
+      set({ isLoadingMoreConversations: true });
+    }
+
     try {
-      const response = await authFetch(`/api/sms/conversations?deviceId=${deviceId}`);
+      const response = await authFetch(
+        `/api/sms/conversations?deviceId=${deviceId}&limit=${CONVERSATIONS_PAGE_SIZE}&offset=${currentOffset}&includeTotal=${includeTotal}`
+      );
       console.log("fetchConversations_response", response);
       
       if (response.code !== 200) {
         throw new Error('Failed to fetch conversations');
       }
 
-      set({ conversations: response.data.conversations || [] });
+      const nextConversations = response.data.conversations || [];
+      const pagination = response.data.pagination || {};
+
+      set((state) => ({
+        conversations: append
+          ? [...state.conversations, ...nextConversations]
+          : nextConversations,
+        conversationsHasMore: Boolean(pagination.hasMore),
+        conversationsOffset: Number.isFinite(pagination.nextOffset)
+          ? pagination.nextOffset
+          : currentOffset + nextConversations.length,
+        totalConversations: Number.isFinite(pagination.total)
+          ? pagination.total
+          : append
+            ? state.totalConversations
+            : nextConversations.length,
+      }));
     } catch (error) {
       console.error('Failed to fetch conversations:', error);
       toast.error('Failed to load conversations');
+    } finally {
+      if (append) {
+        set({ isLoadingMoreConversations: false });
+      }
     }
+  },
+
+  loadMoreConversations: async () => {
+    const { selectedDevice, conversationsHasMore, isLoadingMoreConversations, fetchConversations } = get();
+
+    if (!selectedDevice || !conversationsHasMore || isLoadingMoreConversations) {
+      return;
+    }
+
+    await fetchConversations(selectedDevice._id, { append: true });
   },
 
   fetchConversation: async (simId : string,contactId : string,phoneNumber: string, port: number, slot: number, deviceId: string) => {
@@ -362,7 +422,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   loadMessages: async () => {
     set({ isLoading: true });
     try {
-      const { selectedDevice, fetchConversations } = get();
+      const { selectedDevice, fetchConversations, resetConversationPagination } = get();
       
       if (!selectedDevice) {
         throw new Error('No device selected');
@@ -376,6 +436,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         set({ messages: messagesData });
         
         // Fetch conversations after loading messages
+        resetConversationPagination();
         await fetchConversations(selectedDevice._id);
       }
       
