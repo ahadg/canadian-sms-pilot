@@ -229,6 +229,7 @@ export function AIMessages() {
     prompt?: string;
     companyName?: string;
     companyAddress?: string;
+    contactMethod?: string;
   }>({});
 
   useEffect(() => {
@@ -265,6 +266,16 @@ export function AIMessages() {
       errors.companyAddress = "Company address is required";
     }
 
+    const hasContactMethod = Boolean(
+      settings.companyEmail?.trim() ||
+      settings.companyPhone?.trim() ||
+      settings.companyWebsite?.trim()
+    );
+
+    if (!hasContactMethod) {
+      errors.contactMethod = "Add at least one contact method: email, phone, or website";
+    }
+
     setGeneratorErrors(errors);
 
     if (Object.keys(errors).length > 0) return;
@@ -293,7 +304,11 @@ export function AIMessages() {
       setGeneratedVariants(response.data.variants);
     } catch (error) {
       console.error('Failed to generate variants:', error);
-      alert('Failed to generate variants. Please try again.');
+      toast({
+        title: "Generation failed",
+        description: error instanceof Error ? error.message : "Failed to generate variants. Please try again.",
+        variant: "destructive"
+      });
     } finally {
       setIsGenerating(false);
     }
@@ -383,6 +398,9 @@ export function AIMessages() {
     setSettings(prev => ({ ...prev, [key]: value }));
     if (key === "companyName" || key === "companyAddress") {
       setGeneratorErrors(prev => ({ ...prev, [key]: undefined }));
+    }
+    if (key === "companyEmail" || key === "companyPhone" || key === "companyWebsite") {
+      setGeneratorErrors(prev => ({ ...prev, contactMethod: undefined }));
     }
   };
 
@@ -528,6 +546,12 @@ export function AIMessages() {
                       Adding contact details ensures CASL compliance and builds trust with recipients.
                     </p>
 
+                    {generatorErrors.contactMethod && (
+                      <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                        <p className="text-sm text-destructive">{generatorErrors.contactMethod}</p>
+                      </div>
+                    )}
+
                     <div className="space-y-3">
                       <div>
                         <Label className="flex items-center gap-2 text-sm">
@@ -593,6 +617,10 @@ export function AIMessages() {
                           className="mt-1"
                         />
                       </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        At least one of email, phone, or website is required.
+                      </p>
                     </div>
                   </div>
 
